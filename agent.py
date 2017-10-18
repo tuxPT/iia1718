@@ -1,5 +1,5 @@
-from constants import *
 import logging
+from world import *
 
 class Agent:
     def __init__(self, name, body, world):
@@ -13,7 +13,7 @@ class Agent:
         logging.basicConfig(format=':%(levelname)s:%(message)s', level=logging.DEBUG)
 
     def chooseAction(self, vision):
-        return  ## return action (one of the DIRECTIONS)
+        return  ## return action (one of the ACTIONS)
 
     def processkey(self, key):
         pass #nothing to do here it is just to support human players
