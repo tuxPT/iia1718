@@ -1,6 +1,8 @@
 from agent import *
 import random
 
+## THIS IS myagent Agent1
+
 class Agent1(Agent):
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
