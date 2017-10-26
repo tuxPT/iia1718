@@ -5,8 +5,12 @@ class Agent1(Agent):
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
 
-    def chooseAction(self, vision):
-        #this is the brain of the agent
+    def chooseAction(self, vision, msg):
+        # This is the brain of the agent
+        # You can use self.name, .world, .body, .nutrients, .age, .timespent
+        # and the parameters, vision and msg, to decide what to do.
+        # You must return an action and a message (possibly empty).
+        
         head = self.body[0]
         
         #get the list of valid actions for us
@@ -17,4 +21,5 @@ class Agent1(Agent):
                 validact.append(act)
         
         action = random.choice(validact)
-        return action
+        msg = b""
+        return action, msg

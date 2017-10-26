@@ -32,6 +32,12 @@ class Point(namedtuple("Point", ['x', 'y'])):
         """Return positive (width, height) of a vector."""
         return Point(abs(self.x), abs(self.y))
 
+    def __str__(self):
+        """String representation of a point.
+        Make it the same as a tuple's, e.g.: (1, 2).
+        But repr(p) == 'Point(1, 2)'.
+        """
+        return str(tuple(self))
 
 class World:
     """A World object contains a view of the game world.
@@ -54,15 +60,15 @@ class World:
         self.foodfield = []
         self.playerfield = []
     
-    def put(self, pos, cell):
+    def put(self, pos, content):
         assert isinstance(pos, Point)
         pos = self.normalize(pos)
-        if cell in WALL:
-            self.walls[pos] = cell
-        elif cell in FOODTYPES:
-            self.food[pos] = cell
+        if content in WALL:
+            self.walls[pos] = content
+        elif content in FOODTYPES:
+            self.food[pos] = content
         else:
-            self.bodies[pos] = cell
+            self.bodies[pos] = content
     
     def get(self, pos):
         return self.cells[pos]
@@ -88,7 +94,7 @@ class World:
         p = self.normalize(p)   # may be removed if isinstance(p, Point)
         return self.normalize(p+d)
 
-    def randPoint(self):
+    def randCoords(self):
         """Return a random point in this world."""
         return Point(random.randrange(0,self.size.x), random.randrange(0,self.size.y))
 
@@ -101,7 +107,7 @@ class World:
             pos = random.choice(preflist)
         else:
             while True:
-                pos = self.randPoint()
+                pos = self.randCoords()
                 if pos not in forbiden: break
         assert pos not in forbiden
         return pos
@@ -154,7 +160,7 @@ class World:
 
     def generateWalls(self, level):
         for i in range(1,level+1):
-            lo = self.randPoint() #last wall
+            lo = self.randCoords() #last wall
             self.walls[lo] = WALL
             for j in range(1,random.randint(1,level)):
                 d = random.choice(DIRECTIONS[1:3])
@@ -195,7 +201,7 @@ DIRECTIONS = [Up, Down, Right, Left]    # Does not contain Stay!
 ACTIONS = [Stay] + DIRECTIONS           # Stay is always ACTIONS[0]
 
 ## Cell contents
-WALL = 'X'
+WALL = 'W'
 FOODTYPES = list(FOODCOLOR.keys())
 #BODYTYPES = ['P0', 'P1'] # = agent names
 

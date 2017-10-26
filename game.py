@@ -1,16 +1,19 @@
 # LongLife: a cooperating agents game
-# v0.9.2
-# Initially based on the code provided by http://www.virtualanup.com at https://gist.githubusercontent.com/virtualanup/7254581/raw/d69804ce5b41f73aa847f4426098dca70b5a1294/snake2.py
-# Modified by Diogo Gomes <dgomes@av.it.pt> 2016
+# v1.0
+# This version implements all features of the game:
+# moving, thinking, communicating, nutrient redistribution and ageing.
 #
-# JMRodrigues <jmr@ua.pt> 2017
+# Initially based on the code provided by http://www.virtualanup.com at https://gist.githubusercontent.com/virtualanup/7254581/raw/d69804ce5b41f73aa847f4426098dca70b5a1294/snake2.py
+# Modified into the ia-iia-snake game by Diogo Gomes <dgomes@av.it.pt> 2016
+# Transformed into the ia-iia-longlife game by JM Rodrigues <jmr@ua.pt> 2017
 
 import sys
 import logging
 import copy
 from collections import namedtuple, ChainMap, Counter
-import pygame,random
+import pygame
 from pygame.locals import *
+import time
 
 from world import *
 
@@ -19,37 +22,38 @@ class Player:
         self.name = name
         self.body = body[:]
         self.world = world
-        self.score = 0
+        self.age = 0
         
         self.agent = AgentClass(name, body[:], copy.deepcopy(world))
         
         self.nutrients = {}
         self.nutrients['M'] = 1000
         self.nutrients['S'] = 1000
-        self.timespent = 0
+        self.timespent = 0.0    # cpu time spent in previous cycle (s)
         self.horizon = 20
+        
+        self.inbox = self.outbox = b""  # message mailboxes
         
     def filterVision(self, env):
         """Return only the parts of the environment which are visible."""
         return {p:v for p,v in env.items() if self.world.dist(p, self.body[0]) <= self.horizon}  
 
     def transferInfo(self):
-        """Transfer filtered dynamic info from player into corresponding agent."""
+        """Transfer proprioception from player into corresponding agent."""
+        self.agent.age = self.age
         self.agent.body = copy.deepcopy(self.body)
-        ##self.agent.world.bodies = self.filterVision(self.world.bodies)
-        ##self.agent.world.food = self.filterVision(self.world.food)
-    
         self.agent.nutrients = copy.deepcopy(self.nutrients)
         self.agent.timespent = self.timespent
-        self.agent.score = self.score
-        pass
         
+    def __str__(self):
+        return "{}(age={},nutrients={}),head={}".format(self.name, self.age, self.nutrients, self.body[0])
+
+
 class AgentGame:
     def __init__(self, AgentClass,
-            width=60, height=40, foodquant=4, timeslot=10,
+            width=60, height=40, foodquant=4, timeslot=0.020,
             filename=None, walls=15,
-            visual=False, fps=50, tilesize=20,
-            timeout=sys.maxsize):
+            visual=False, fps=25, tilesize=20):
 
         if filename != None:
             logging.info("Loading {} ...".format(filename))
@@ -62,7 +66,8 @@ class AgentGame:
         self.world = World(Point(width, height))
         
         self.foodquant = foodquant  # quantity of each kind of food
-        self.timeslot = timeslot    # time in milliseconds given per unit of S nutrient
+        self.timeslot = timeslot    # time in seconds afforded per R units of S nutrient (Confused?)
+        self.bytesPerS = 10         # bytes of communication afforded per unit of S nutrient
         
         ## Fill the walls
         if filename != None:
@@ -72,7 +77,6 @@ class AgentGame:
         
         self.fps = fps      # Frames per second
         self.tilesize = tilesize    # tile size
-        self.timeout = timeout  # maximum number of cycles 
         
         if visual: 
             #create the window and do other stuff
@@ -94,24 +98,37 @@ class AgentGame:
         self.deadPlayers = []                   # list of dead players
     
     def killPlayer(self, player):
-        for t in player.nutrients:
-            player.nutrients[t] = 0
+        #for t in player.nutrients:
+        #    player.nutrients[t] = 0
         self.livePlayers.remove(player)
         self.deadPlayers.append(player)
 
     def executeAction(self, player, action):
         
-        ## Check action!
+        ## Check action
         if action not in ACTIONS:
             self.killPlayer(player)
             logging.error("{} invalid action: {} -> DEAD".format(player.name, action))
             return
         
+        ## Check message
+        if not isinstance(player.outbox, bytes):
+            self.killPlayer(player)
+            logging.error("{} invalid message: {} -> DEAD".format(player.name, player.outbox))
+            return
+        
         ## Account for nutrients
-        logging.info("{} took {}".format(player.name, player.timespent))
-        cost = 1 + player.timespent//self.timeslot
-        player.nutrients['S'] -= cost   ## Thinking costs nutrients!
-        player.nutrients['M'] -= 1      ## Moving costs nutrients too!
+        costT = 1 + int(player.timespent/self.timeslot)   # Cost of Thinking
+        costC = (len(player.outbox)+self.bytesPerS-1)//self.bytesPerS   # Cost of Communicating
+        costA = 1 + player.age//1000       # Cost of Acting: increases with age
+        # Thinking & Communicating consume S nutrients:
+        player.nutrients['S'] -= costT + costC
+        # Acting consumes M nutrients:
+        player.nutrients['M'] -= costA
+        logging.info("{} consumes {} units of S <= spent {} s thinking.".format(player.name, costT, player.timespent))
+        logging.info("{} consumes {} units of S <= spent {} bytes communicating.".format(player.name, costC, len(player.outbox)))
+        logging.info("{} consumes {} units of M <= chose action {}.".format(player.name, costA, action))
+        
         if player.nutrients['S'] <= 0 or player.nutrients['M'] <= 0:
             self.killPlayer(player)
             logging.info("{} run out of nutrients -> DEAD".format(player.name))
@@ -119,8 +136,8 @@ class AgentGame:
         
         ## Move (or stay put)
         if action != Stay:
-            # Update the head
-            head = player.body[0]    ## head of player
+            # New head position
+            head = player.body[0]    ## current head of player
             head = self.world.translate(head, action)
                     
             # Check if the player crashed
@@ -128,26 +145,26 @@ class AgentGame:
                 self.killPlayer(player)
                 logging.info("{} crashed against wall -> DEAD".format(player.name))
                 return
-            if head in self.world.bodies: # hit a body
+            if head in self.world.bodies:   # hit a body
                 self.killPlayer(player)
                 logging.info("{} crashed against a body -> DEAD".format(player.name))
                 return
             # Update the body
-            tail = player.body[-1]   ## tail tip (may be needed after eating)
+            tail = player.body[-1]   # tail tip (may be needed after eating)
             player.body = [head] + player.body[:-1]
             self.world.bodies[head] = player.name
             self.world.bodies.pop(tail)
             if head in self.world.food: # eat food
                 ## remove the food
                 t = self.world.food.pop(head)
-                ## absorb nutrients
+                ## absorb nutrients (but not indefinitely)
                 player.nutrients[t] = min(player.nutrients[t]+100, 2000)
                 ## grow body
                 #player.body.append(tail)
                 #self.world.bodies[tail] = player.name
         
         self.checkBodies()  # check bodies invariant
-        
+
     def checkBodies(self):
         c = 0
         for player in self.allPlayers:
@@ -156,6 +173,25 @@ class AgentGame:
                 assert pos in self.world.bodies
                 assert self.world.bodies[pos] == player.name
         assert c == len(self.world.bodies), (c, self.world.bodies,)
+    
+    def redistibuteNutrients(self):
+        """Redistributes nutrients between players in order to equalize their stocks.
+        For example: {'S':1, 'M':8} and {'S':8, 'M':2} -> {'S':4, 'M':5} and {'S':5, 'M':5}.
+        """
+        for t in FOODTYPES:
+            # TODO: allPlayers? even if dead?
+            players = sorted(self.allPlayers, key=lambda p: p.nutrients[t], reverse=True)
+            total = sum(p.nutrients[t] for p in players)
+            (m, r) = divmod(total, len(players))    # find integer mean and remainder
+            for p in players:
+                p.nutrients[t] = m + (r>0)  # add 1 to the first r players
+                r -= 1
+            # Test postcondition:
+            assert total == sum(p.nutrients[t] for p in players), "Total should be conserved"
+            n = [p.nutrients[t] for p in players]
+            assert max(n) - min(n) <= 1, "Differences should be at most 1" 
+        return
+    
     
     def getEvents(self):
         ## Get events
@@ -172,48 +208,50 @@ class AgentGame:
                     self.tilesize = int(min(event.w/self.world.size.x, event.h/self.world.size.y))
                     self.screen = pygame.display.set_mode((self.world.size.x*self.tilesize, self.world.size.y*self.tilesize+25), pygame.RESIZABLE)
                     print(event, self.tilesize)
-                    
+    
     def show(self):
         # Show all the game contents in the screen
         if self.screen != None:
+            T = self.tilesize
             self.screen.fill((0,0,0))
+            
+            # Show walls
+            for wall in self.world.walls:
+                pygame.draw.rect(self.screen, WALLCOLOR, (wall[0]*T, wall[1]*T, T, T), 0)
+            
+            # Show food
+            for f in self.world.food:
+                pygame.draw.ellipse(self.screen, FOODCOLOR[self.world.food[f]], (f[0]*T, f[1]*T, T, T), 0)
+            
+            ## Show players
             for player in self.allPlayers:
-                f = 0.2+0.7*player.nutrients['S']/2000
+                f = 0.25+0.75*player.nutrients['S']/2000
                 (r,g,b) = FOODCOLOR['S']
                 head_color = (int(r*f), 64, int(b*f))
-                f = 0.2+0.7*player.nutrients['M']/2000
+                f = 0.25+0.75*player.nutrients['M']/2000
                 (r,g,b) = FOODCOLOR['M']
                 color = (int(r*f), 64, int(b*f))
                 #head + rest of body
-                T = self.tilesize
                 pygame.draw.rect(self.screen, head_color, (player.body[0][0]*T, player.body[0][1]*T, T, T), 0)
                 for part in player.body[1:]:
                     pygame.draw.rect(self.screen, color, (part[0]*T, part[1]*T, T, T), 0)
-
-            for wall in self.world.walls: #print walls
-                pygame.draw.rect(self.screen, WALLCOLOR, (wall[0]*T, wall[1]*T, T, T), 0)
             
-            for f in self.world.food: #print food
-                pygame.draw.ellipse(self.screen, FOODCOLOR[self.world.food[f]], (f[0]*T, f[1]*T, T, T), 0)
-
         # Show stats
-        line = ""
-        for p in self.allPlayers:
-            line += "{:<2s}: {:6d} {:<30s}  ".format(p.name, p.score, str(p.nutrients))
+        line = "  ".join(str(p) for p in self.allPlayers)
         
-        if self.screen == None and (self.count % self.fps == 0 or self.count >= self.timeout):
-            logging.info(line)
-        elif self.screen != None:
-            text = self.font.render(line, 1,(255,255,255))
+        logging.info("Stats: "+line)
+        
+        if self.screen != None:
+            ## Show stats
+            text = self.font.render(line, 1, (255,255,255))
             textpos = text.get_rect(x=0, y=(self.world.size.y)*self.tilesize)
             self.screen.blit(text, textpos)
-      
+        
         if len(self.livePlayers) == 0:
             line = "GAME OVER"
-            if self.screen == None:
-                logging.info(line)
-            else:
-                text=self.font.render(line, 1, (255,128,0))
+            logging.info(line)
+            if self.screen != None:
+                text=self.font.render(line, 1, (255,128,0), (0,0,0))
                 textpos = text.get_rect(centerx=self.screen.get_width()/2, centery=self.screen.get_height()/2)
                 self.screen.blit(text, textpos)
     
@@ -221,7 +259,7 @@ class AgentGame:
         clock = pygame.time.Clock()
         self.count = 0
         ## Main loop
-        while len(self.livePlayers) > 0 and self.count < self.timeout :
+        while len(self.livePlayers) > 0:
             self.count += 1
             clock.tick(self.fps)
             
@@ -241,7 +279,7 @@ class AgentGame:
  
             ## Update players
             for player in self.livePlayers:
-                player.score += 1           # lived another tick!
+                player.age += 1           # lived another tick!
             
                 ## Transfer info to agent
                 player.transferInfo()
@@ -250,35 +288,50 @@ class AgentGame:
                 vision.food = player.filterVision(self.world.food)
                 
                 ## Call the AGENT (and measure time and catch errors)
-                s = pygame.time.get_ticks()
+                s = time.process_time()
                 try:
                     action = None   # default if agent fails => Die
-                    action = player.agent.chooseAction(vision)
+                    action, player.outbox = player.agent.chooseAction(vision, player.inbox)
                 except Exception as e:
                     logging.exception(e)
-                f = pygame.time.get_ticks()
+                f = time.process_time()
                 player.timespent = f - s
-                
+                logging.debug("{}.timespent = {:.4f} s".format(player.name, player.timespent))
                 ## Execute the action and update the game
                 self.executeAction(player, action)
             
+            ## Transfer messages for next cycle
+            # TODO: should this be done after each player?
+            # TODO: this works only for 2 players!  Does not generalize well...
+            P0, P1 = self.allPlayers
+            P0.inbox, P1.inbox = P1.outbox, P0.outbox
+            
+            ## Check adjacency and redistribute
+            # TODO: should this be done after each player?
+            # TODO: this works only for 2 players!  Does not generalize well...
+            h0 = P0.body[0]
+            h1 = P1.body[0]
+            if self.world.dist(h0, h1) == 1:
+                logging.info("Rendez-vous {}-{} => Redistribution".format(h0, h1))
+                logging.debug("Before: {} {}".format(*self.allPlayers))
+                self.redistibuteNutrients()
+                logging.debug("After: {} {}".format(*self.allPlayers))
+                
             ## Show the game state
             self.show()
             
             if self.screen != None:
                 pygame.display.update()
 
-        if self.count >= self.timeout:
-            logging.critical("GAME OVER BY TIMEOUT after {} counts".format(self.count))
-        else:
-            logging.info("GAME OVER after {} counts".format(self.count))
+        logging.info("GAME OVER after {} counts".format(self.count))
         
         while self.screen != None:
+            # Pygame BUG?: This seems to busy-wait (100% CPU)! Why?
             event = pygame.event.wait()
             if event.type == QUIT or (event.type == pygame.KEYDOWN and event.key == K_ESCAPE): #close window or press ESC
                 pygame.quit(); 
                 break
         
-        score = sum([p.score for p in self.allPlayers])
+        score = sum([p.age for p in self.allPlayers])
         return score
         
