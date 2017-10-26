@@ -1,7 +1,8 @@
 from agent import *
 import random
 
-## THIS IS myagent Agent1
+# This is an example of an agent to play the LongLife game.
+# It is not very intelligent: it simply avoids crashing onto walls or bodies.
 
 class Agent1(Agent):
     def __init__(self, name, body, world):
