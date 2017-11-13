@@ -5,6 +5,7 @@
 
 from collections import namedtuple
 from collections import ChainMap
+from collections import deque
 #from enum import Enum
 import logging
 import random
@@ -50,10 +51,12 @@ class World:
     in the toroidal world.
     """
     
-    def __init__(self, size):
+    def __init__(self, size, seed=None):
+        self.rnd = random.Random(seed)  # random generator to use in this world
         self.size = size
         self.walls = {}
         self.food = {}
+        self.foodQueue = {t: deque() for t in FOODTYPES} # queues of foods of each type
         self.bodies = {}
         self.cells = ChainMap(self.bodies, self.food, self.walls)
         
@@ -67,6 +70,7 @@ class World:
             self.walls[pos] = content
         elif content in FOODTYPES:
             self.food[pos] = content
+            self.foodQueue[t].append(p)
         else:
             self.bodies[pos] = content
     
@@ -91,12 +95,12 @@ class World:
     
     def translate(self, p, d):
         """Point obtained by adding vector d to point p."""
-        p = self.normalize(p)   # may be removed if isinstance(p, Point)
+        p = self.normalize(p)   # not needed if isinstance(p, Point)
         return self.normalize(p+d)
 
     def randCoords(self):
         """Return a random point in this world."""
-        return Point(random.randrange(0,self.size.x), random.randrange(0,self.size.y))
+        return Point(self.rnd.randrange(0,self.size.x), self.rnd.randrange(0,self.size.y))
 
     def generatePos(self, forbiden={}, preferred={}):
         """Generate a position guaranteed not to be in forbiden.
@@ -104,7 +108,7 @@ class World:
         """
         preflist = [p for p in preferred if p not in forbiden]
         if len(preflist) > 0:
-            pos = random.choice(preflist)
+            pos = self.rnd.choice(preflist)
         else:
             while True:
                 pos = self.randCoords()
@@ -124,22 +128,32 @@ class World:
         return body
 
     def generateFood(self, t):
-        pos = self.generatePos(forbiden=self.cells, preferred=self.foodfield)
-        self.food[pos] = t
-        return pos
+        """Create food of type t and return its position."""
+        p = self.generatePos(forbiden=self.cells, preferred=self.foodfield)
+        self.food[p] = t
+        self.foodQueue[t].append(p)
+        return p
     
-    def moveFood(self):
-        currentpos = self.food.keys()
-        for p in currentpos:
-            if self.food[p] == 'M':
-                newpos = [self.translate(p, d) for d in ACTIONS]
-                #newpos = {self.translate(p, d):'M' for d in ACTIONS}
-                t = self.food.pop(p)
-                assert p in newpos
-                assert p not in self.cells
-                pos = self.generatePos(forbiden=self.cells, preferred=newpos)
-                self.food[pos] = t
+    def eatFood(self, p):
+        """Eat the food in position p and return its type."""
+        t =  self.food.pop(p)
+        self.foodQueue[t].remove(p)
+        return t
     
+    def moveFood(self, t):
+        """Move a piece of food of type t."""
+        p = self.foodQueue[t].popleft()  # food that has not moved for the longest
+        t2 = self.food.pop(p)
+        assert t2 == t
+        newpos = [self.translate(p, d) for d in ACTIONS]
+        #newpos = {self.translate(p, d): t for d in ACTIONS}
+        assert p not in self.cells # current position must be free now
+        assert p in newpos         # current position is always a valid option
+        p2 = self.generatePos(forbiden=self.cells, preferred=newpos)
+        self.food[p2] = t
+        self.foodQueue[t].append(p2)
+        logging.debug("Moving {}->{}".format(p, p2))
+                        
     def loadField(self, pxarray):
         for x in range(len(pxarray)):
             for y in range(len(pxarray[x])):
@@ -162,8 +176,8 @@ class World:
         for i in range(1,level+1):
             lo = self.randCoords() #last wall
             self.walls[lo] = WALL
-            for j in range(1,random.randint(1,level)):
-                d = random.choice(DIRECTIONS[1:3])
+            for j in range(1, self.rnd.randint(1,level)):
+                d = self.rnd.choice(DIRECTIONS[1:3])
                 lo = self.translate(lo, d)
                 self.walls[lo] = WALL
 

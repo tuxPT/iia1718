@@ -11,6 +11,7 @@ from agent1 import Agent1
 import importlib
 import logging
 import sys
+import os
 import getopt
 
 
@@ -19,6 +20,7 @@ USAGE = \
           -s/--student-agent AgentName
           -m/--map <mapfile>
           -v/--no-video
+          -c/--calibrate
           -d/--debug Level(0--4)
 """
 
@@ -31,9 +33,9 @@ def main(argv):
     visual = True
     studentAgent = Agent1
     debug = 2
-    
+    calibrate = False
     try:
-        opts, args = getopt.getopt(argv,"hm:vs:d:",["help","map=","no-video","student-agent", "debug="])
+        opts, args = getopt.getopt(argv,"hm:s:vcd:",["help","map=","student-agent=","no-video", "calibrate", "debug="])
     except getopt.GetoptError as e:
         print(e)
         print(USAGE)
@@ -45,20 +47,33 @@ def main(argv):
             sys.exit()
         elif opt in ["-m", "--map"]:
             inputfile = arg
-        elif opt in ["-v", "--no-video"]:
-            visual = False 
         elif opt in ["-s", "--student-agent"]:
             classmodule = importlib.import_module(arg.lower())
             studentAgent = getattr(classmodule, arg)
-        elif opt in ["-d", "--debug"]:  # not working?
+        elif opt in ["-v", "--no-video"]:
+            visual = False 
+        elif opt in ["-c", "--calibrate"]:
+            calibrate = True
+        elif opt in ["-d", "--debug"]:
             debug = int(arg)
         
     logging.basicConfig(format='%(levelname)s:\t%(message)s', level=levels[debug]) 
-            
+    
+    try:
+        # Try to pin process to a single CPU (to have more predictable times)
+        logging.debug("Original affinity: {}".format(os.sched_getaffinity(0)))
+        os.sched_setaffinity(0, [0])  # TODO: does not seem to make a difference...
+        #os.system("taskset -p 0x01 {}".format(os.getpid()))
+        logging.debug("New affinity: {}".format(os.sched_getaffinity(0)))
+    except:
+        # Operating System may not support setaffinity.  Not a big deal.
+        logging.debug("Could not set CPU affinity for the process.")
+    
     try:
         game = AgentGame(AgentClass=studentAgent,
-            width=60, height=40, foodquant=4, timeslot=0.020,
+            width=60, height=40,
             filename=inputfile, walls=15,
+            foodquant=4, timeslot=0.020, calibrate=calibrate,
             visual=visual, fps=25, tilesize=20)
         print("Launching game")
         score = game.start()
