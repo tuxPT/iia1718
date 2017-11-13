@@ -1,7 +1,10 @@
 # LongLife: a cooperating agents game
-# v1.0
-# This version implements all features of the game:
-# moving, thinking, communicating, nutrient redistribution and ageing.
+# v1.2
+# Features changed from v1.0:
+# * Messages pass from P0 to P1 and from P1 to P0 always with half-cycle delay.
+# * Nutrient redistribution may happen after each player acts.
+# * Food is moved between player turns.
+# * There's a tentative calibration of the timeslot.
 #
 # Initially based on the code provided by http://www.virtualanup.com at https://gist.githubusercontent.com/virtualanup/7254581/raw/d69804ce5b41f73aa847f4426098dca70b5a1294/snake2.py
 # Modified into the ia-iia-snake game by Diogo Gomes <dgomes@av.it.pt> 2016
@@ -32,7 +35,7 @@ class Player:
         self.timespent = 0.0    # cpu time spent in previous cycle (s)
         self.horizon = 20
         
-        self.inbox = self.outbox = b""  # message mailboxes
+        self.outbox = b""
         
     def filterVision(self, env):
         """Return only the parts of the environment which are visible."""
@@ -46,14 +49,24 @@ class Player:
         self.agent.timespent = self.timespent
         
     def __str__(self):
-        return "{}(age={},nutrients={}),head={}".format(self.name, self.age, self.nutrients, self.body[0])
+        return "({}, age={}, nutrients={}, head={})".format(self.name, self.age, self.nutrients, self.body[0])
 
 
 class AgentGame:
     def __init__(self, AgentClass,
-            width=60, height=40, foodquant=4, timeslot=0.020,
+            width=60, height=40,
             filename=None, walls=15,
+            foodquant=4, timeslot=0.020, calibrate=False,
             visual=False, fps=25, tilesize=20):
+        
+        logging.info("Original timeslot: {:.6f} s".format(timeslot))
+        if calibrate:
+            # Call 3 times and choose minimum (first time is usually higher)
+            TCAL = min([self.calibrationTime(),
+                        self.calibrationTime(),
+                        self.calibrationTime()])
+            timeslot *= TCAL/0.068
+        logging.info("Adjusted timeslot: {:.6f} s".format(timeslot))
 
         if filename != None:
             logging.info("Loading {} ...".format(filename))
@@ -66,7 +79,7 @@ class AgentGame:
         self.world = World(Point(width, height))
         
         self.foodquant = foodquant  # quantity of each kind of food
-        self.timeslot = timeslot    # time in seconds afforded per R units of S nutrient (Confused?)
+        self.timeslot = timeslot    # time in seconds afforded per unit of S nutrient (Confused?)
         self.bytesPerS = 10         # bytes of communication afforded per unit of S nutrient
         
         ## Fill the walls
@@ -97,6 +110,36 @@ class AgentGame:
         self.livePlayers = self.allPlayers[:]   # list of live players
         self.deadPlayers = []                   # list of dead players
     
+        ## Generate food
+        for t in FOODTYPES:
+            foodcount = 0
+            while foodcount < self.foodquant:
+                self.world.generateFood(t)
+                foodcount += 1
+        
+    def calibrationTime(self):
+        """Run a calibration loop and return the time it takes to complete."""
+        mockworld = World(Point(60,40), 20171106)
+        mockworld.generateWalls(15)
+        origin = Point(0,0)
+        p = mockworld.randCoords()
+        a = Stay
+        t = time.process_time()
+        t2 = time.perf_counter()
+        #t3 = time.clock_gettime(time.CLOCK_THREAD_CPUTIME_ID) # Not on Windows
+        for k in range(10000):
+            p = mockworld.translate(p, a)
+            d = mockworld.dist(p, origin)
+            if p in mockworld.walls:
+                a = mockworld.rnd.choice(ACTIONS[1:])
+            else:
+                mockworld.put(p, 'x')
+        t = time.process_time() - t
+        t2 = time.perf_counter() - t2
+        #t3 = time.clock_gettime(time.CLOCK_THREAD_CPUTIME_ID) - t3
+        logging.debug("Calibration(cpu,perf) {:.6f} {:.6f}".format(t, t2))
+        return t
+    
     def killPlayer(self, player):
         #for t in player.nutrients:
         #    player.nutrients[t] = 0
@@ -115,6 +158,7 @@ class AgentGame:
         if not isinstance(player.outbox, bytes):
             self.killPlayer(player)
             logging.error("{} invalid message: {} -> DEAD".format(player.name, player.outbox))
+            player.outbox = b""
             return
         
         ## Account for nutrients
@@ -156,7 +200,8 @@ class AgentGame:
             self.world.bodies.pop(tail)
             if head in self.world.food: # eat food
                 ## remove the food
-                t = self.world.food.pop(head)
+                t = self.world.eatFood(head)
+                self.world.generateFood(t)
                 ## absorb nutrients (but not indefinitely)
                 player.nutrients[t] = min(player.nutrients[t]+100, 2000)
                 ## grow body
@@ -174,7 +219,7 @@ class AgentGame:
                 assert self.world.bodies[pos] == player.name
         assert c == len(self.world.bodies), (c, self.world.bodies,)
     
-    def redistibuteNutrients(self):
+    def redistributeNutrients(self):
         """Redistributes nutrients between players in order to equalize their stocks.
         For example: {'S':1, 'M':8} and {'S':8, 'M':2} -> {'S':4, 'M':5} and {'S':5, 'M':5}.
         """
@@ -257,30 +302,42 @@ class AgentGame:
     
     def start(self):
         clock = pygame.time.Clock()
-        self.count = 0
+        # Single mailbox for passing messages between players:
+        mailbox = b""
+        
+        # Discriminator for spreading food movement between player turns
+        #   DISC = p*m - f*n,
+        # where
+        #   p = number of turns played, f = number of foods moved,
+        #   n = number of players, m = number of foods to move per n turns
+        # So,
+        #   DISC increases m for each turn played,
+        #   DISC decreases n for each food moved.
+        # Note that:
+        #   DISC > 0  <=>  p*m > f*n  <=>  p/n > f/m,
+        # which means "number of foods is lower than it should"
+        DISC = 0
+        
         ## Main loop
         while len(self.livePlayers) > 0:
-            self.count += 1
             clock.tick(self.fps)
             
             self.getEvents()
             
             #game logic is updated in the code below
             
-            ## (Re)Generate food
-            foodcount = Counter(self.world.food.values())
-            for t in FOODTYPES:
-                while foodcount[t] < self.foodquant:
-                    self.world.generateFood(t)
-                    foodcount[t] += 1
-            
-            ## Move food
-            self.world.moveFood()
- 
             ## Update players
+            n = len(self.livePlayers)   # number of players (and turns)
             for player in self.livePlayers:
                 player.age += 1           # lived another tick!
-            
+                
+                ## Move some foods (only this turn's share)
+                assert len(self.world.foodQueue['M']) == self.foodquant
+                DISC += self.foodquant  # another turn, increase m
+                while DISC > 0:
+                    self.world.moveFood('M')
+                    DISC -= len(self.livePlayers)  # another movement, decrease n
+                
                 ## Transfer info to agent
                 player.transferInfo()
                 vision = namedtuple('Vision', ['bodies', 'food'])
@@ -290,41 +347,36 @@ class AgentGame:
                 ## Call the AGENT (and measure time and catch errors)
                 s = time.process_time()
                 try:
-                    action = None   # default if agent fails => Die
-                    action, player.outbox = player.agent.chooseAction(vision, player.inbox)
+                    action, player.outbox = player.agent.chooseAction(vision, mailbox)
                 except Exception as e:
+                    action, player.outbox = None, b""  # default if agent fails => Die
                     logging.exception(e)
                 f = time.process_time()
                 player.timespent = f - s
                 logging.debug("{}.timespent = {:.4f} s".format(player.name, player.timespent))
                 ## Execute the action and update the game
                 self.executeAction(player, action)
-            
-            ## Transfer messages for next cycle
-            # TODO: should this be done after each player?
-            # TODO: this works only for 2 players!  Does not generalize well...
-            P0, P1 = self.allPlayers
-            P0.inbox, P1.inbox = P1.outbox, P0.outbox
-            
-            ## Check adjacency and redistribute
-            # TODO: should this be done after each player?
-            # TODO: this works only for 2 players!  Does not generalize well...
-            h0 = P0.body[0]
-            h1 = P1.body[0]
-            if self.world.dist(h0, h1) == 1:
-                logging.info("Rendez-vous {}-{} => Redistribution".format(h0, h1))
-                logging.debug("Before: {} {}".format(*self.allPlayers))
-                self.redistibuteNutrients()
-                logging.debug("After: {} {}".format(*self.allPlayers))
+                # Pass message
+                mailbox = player.outbox
                 
+                ## Check adjacency and redistribute
+                # TODO: should this be done after each player?
+                # TODO: this works only for 2 players!  Does not generalize well...
+                P0, P1 = self.allPlayers
+                h0 = P0.body[0]
+                h1 = P1.body[0]
+                if self.world.dist(h0, h1) == 1:
+                    logging.info("Rendez-vous {}-{} => Redistribution".format(h0, h1))
+                    logging.debug("Before: {} {}".format(*self.allPlayers))
+                    self.redistributeNutrients()
+                    logging.debug("After: {} {}".format(*self.allPlayers))
+                    
             ## Show the game state
             self.show()
             
             if self.screen != None:
                 pygame.display.update()
 
-        logging.info("GAME OVER after {} counts".format(self.count))
-        
         while self.screen != None:
             # Pygame BUG?: This seems to busy-wait (100% CPU)! Why?
             event = pygame.event.wait()
@@ -334,4 +386,3 @@ class AgentGame:
         
         score = sum([p.age for p in self.allPlayers])
         return score
-        
