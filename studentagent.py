@@ -1,5 +1,5 @@
 from agent import *
-import random
+import random,math,numpy,sys
 
 
 # This is an example of an agent to play the LongLife game.
@@ -19,34 +19,22 @@ class StudentAgent(Agent):
         # (You may want to use pickle.dumps / pickle.loads to convert
         # objects to bytes and back.)
 
-        head = self.body[0] # posicao atual
+        head = self.body[0] 
 
-        # get the list of valid actions for us
-        validact = ACTIONS[:1]  # staying put is always valid
+        validact = []
+        targets = []
+        self.valid_actions(head, validact, vision)
+        for a in vision.food.keys():
+            targets.append(a)
 
-        targets = list(vision.food)# converte as keys, Point(), para uma lista
-        targets.sort(key=lambda x: self.distance(head, x))# sortea por distancia
-
-        for act in ACTIONS[1:]:
-            newpos = self.world.translate(head, act)
-            if newpos not in self.world.walls and newpos not in vision.bodies:
-                validact.append(act)
-
-        # algoritmo de pesquisa basico, altamente ineficiente
-        # D* lite ou melhor por implementar
-        if targets != [] and len(validact) > 1:
-            action = random.choice(validact[1:])
-            newpos = self.world.translate(head, action)
-            d = self.distance(newpos,targets[0])
-            for act in validact[1:]:
-                newpos = self.world.translate(head, act)
-                dnext = self.distance(newpos, targets[0])
-                if dnext < d:
-                    d = dnext
-                    action = act
-            return action, b""
-        else:
-            return random.choice(validact),b""
+        targets.sort(key=lambda x: self.distance(head, x))
+        if targets != []:
+            pos = self.search_astar(head, targets[0], vision)
+            for act in validact:
+                newpos = self.world.translate(head,act)
+                if newpos == pos:
+                    return act,b"" 
+        return Stay,b""
 
     def distance(self, head, pos):
         dx = abs(head.x - pos.x)
@@ -55,4 +43,62 @@ class StudentAgent(Agent):
             dx = self.world.size.x - dx
         if dy > self.world.size.y/2:
             dy = self.world.size.y - dy
-        return pow(pow(dx, 2) + pow(dy, 2), 1 / 2)
+        return math.hypot(dx,dy)
+
+    def search_astar(self, start, goal, vision):
+        closedset = [] # coordenadas visitadas
+        openset = [start] # coordenadas por visitar
+        cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
+
+        Gdict = {} # dicionario/mapa, dada uma posicao retorna o custo acumulado
+        Gdict[start] = 0 
+
+        Fdict = {} # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
+        Fdict[start] = self.distance(start, goal)
+        
+        while openset != []:
+            current = openset[0]
+            if current == goal:
+                return self.first_action(cameFrom, current)
+            
+            openset.remove(current)
+            closedset.append(current)
+
+            validact = []
+            self.valid_actions(current,validact,vision)
+            neighbors = []
+            for act in validact:
+                newpos = self.world.translate(current, act)
+                if newpos not in closedset:
+                    neighbors.append(newpos)
+            neighbors.sort(key=lambda x: self.distance(x, goal))
+            for pos in neighbors:
+                if pos not in openset:
+                    openset.append(pos)
+                
+                gscore = Gdict[current] + self.distance(current,pos)
+                if pos not in Gdict:
+                    Gdict[pos] = sys.maxsize
+                
+                Gdict.setdefault(pos, sys.maxsize)
+                if gscore < Gdict[pos]:
+                    cameFrom[pos] = current
+                    Gdict[pos] = gscore
+                    Fdict[pos] = Gdict[pos] +self.distance(current,goal)
+                
+        return start
+
+    def first_action(self, cameFrom, current):
+        first = current
+        second = current
+        while first in cameFrom.keys() and cameFrom[first] != first:
+            second = first
+            first = cameFrom[first]
+        return second
+        
+
+    def valid_actions(self, head, validact, vision):
+        for act in ACTIONS[1:]:
+            newpos = self.world.translate(head, act)
+            if newpos not in self.world.walls and newpos not in vision.bodies:
+                validact.append(act)
