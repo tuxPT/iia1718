@@ -74,8 +74,8 @@ class World:
         else:
             self.bodies[pos] = content
     
-    def get(self, pos):
-        return self.cells[pos]
+    def get(self, pos, default=None):
+        return self.cells.get(pos, default)
     
     
     # Methods to manipulate points and coords in the world

@@ -1,6 +1,9 @@
 # LongLife: a cooperating agents game
-# v1.2
-# Features changed from v1.0:
+# v1.3
+# Features changed since 1.2:
+# * Redistribution of nutrients only happens between _live_ players.
+#
+# Features changed since v1.0:
 # * Messages pass from P0 to P1 and from P1 to P0 always with half-cycle delay.
 # * Nutrient redistribution may happen after each player acts.
 # * Food is moved between player turns.
@@ -47,8 +50,27 @@ class Player:
         self.agent.body = copy.deepcopy(self.body)
         self.agent.nutrients = copy.deepcopy(self.nutrients)
         self.agent.timespent = self.timespent
-        
-    def __str__(self):
+    
+    @staticmethod
+    def redistributeNutrients(players):
+        """Redistributes nutrients between players in order to equalize their stocks.
+        For example: {'S':1, 'M':8} and {'S':8, 'M':2} -> {'S':4, 'M':5} and {'S':5, 'M':5}.
+        """
+        for t in FOODTYPES:
+            # TODO: allPlayers? even if dead?
+            total = sum(p.nutrients[t] for p in players)
+            (m, r) = divmod(total, len(players))    # find integer mean and remainder
+            sortedPlayers = sorted(players, key=lambda p: p.nutrients[t], reverse=True)
+            for p in sortedPlayers:
+                p.nutrients[t] = m + (r>0)  # add 1 to the first r players
+                r -= 1
+            # Test postcondition:
+            assert total == sum(p.nutrients[t] for p in players), "Total should be conserved"
+            n = [p.nutrients[t] for p in players]
+            assert max(n) - min(n) <= 1, "Differences should be at most 1" 
+        return
+    
+    def __repr__(self):
         return "({}, age={}, nutrients={}, head={})".format(self.name, self.age, self.nutrients, self.body[0])
 
 
@@ -219,24 +241,6 @@ class AgentGame:
                 assert self.world.bodies[pos] == player.name
         assert c == len(self.world.bodies), (c, self.world.bodies,)
     
-    def redistributeNutrients(self):
-        """Redistributes nutrients between players in order to equalize their stocks.
-        For example: {'S':1, 'M':8} and {'S':8, 'M':2} -> {'S':4, 'M':5} and {'S':5, 'M':5}.
-        """
-        for t in FOODTYPES:
-            # TODO: allPlayers? even if dead?
-            players = sorted(self.allPlayers, key=lambda p: p.nutrients[t], reverse=True)
-            total = sum(p.nutrients[t] for p in players)
-            (m, r) = divmod(total, len(players))    # find integer mean and remainder
-            for p in players:
-                p.nutrients[t] = m + (r>0)  # add 1 to the first r players
-                r -= 1
-            # Test postcondition:
-            assert total == sum(p.nutrients[t] for p in players), "Total should be conserved"
-            n = [p.nutrients[t] for p in players]
-            assert max(n) - min(n) <= 1, "Differences should be at most 1" 
-        return
-    
     
     def getEvents(self):
         ## Get events
@@ -359,17 +363,16 @@ class AgentGame:
                 # Pass message
                 mailbox = player.outbox
                 
-                ## Check adjacency and redistribute
-                # TODO: should this be done after each player?
-                # TODO: this works only for 2 players!  Does not generalize well...
-                P0, P1 = self.allPlayers
-                h0 = P0.body[0]
-                h1 = P1.body[0]
-                if self.world.dist(h0, h1) == 1:
-                    logging.info("Rendez-vous {}-{} => Redistribution".format(h0, h1))
-                    logging.debug("Before: {} {}".format(*self.allPlayers))
-                    self.redistributeNutrients()
-                    logging.debug("After: {} {}".format(*self.allPlayers))
+                ## If heads touch, redistribute nutrients
+                # DONE: now done after each player!
+                # DONE: now works for N players!
+                # DONE: now only works on live players!
+                neighbors = [p for p in self.livePlayers if self.world.dist(player.body[0], p.body[0]) <= 1]
+                if len(neighbors) > 1:
+                    logging.info("Rendez-vous {}".format(neighbors))
+                    logging.debug("Before redistribution: {}".format(self.allPlayers))
+                    Player.redistributeNutrients(neighbors)
+                    logging.debug("After redistribution: {}".format(self.allPlayers))
                     
             ## Show the game state
             self.show()
