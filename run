@@ -1,22 +1,22 @@
 #!/usr/bin/bash
 
 echo " mapa random"
-python3 start.py -v -s StudentAgent
+python3 start.py -c -v -s StudentAgent
 
 echo -e "\n mapa 1"
-python3 start.py -m mapa1.bmp -v -s StudentAgent
+python3 start.py -m mapa1.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 2"
-python3 start.py -m mapa2.bmp -v -s StudentAgent
+python3 start.py -m mapa2.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 3"
-python3 start.py -m mapa3.bmp -v -s StudentAgent
+python3 start.py -m mapa3.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 4"
-python3 start.py -m mapa4.bmp -v -s StudentAgent
+python3 start.py -m mapa4.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 5"
-python3 start.py -m mapa5.bmp -v -s StudentAgent
+python3 start.py -m mapa5.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 6"
-python3 start.py -m mapa6.bmp -v -s StudentAgent
+python3 start.py -m mapa6.bmp -c -v -s StudentAgent
