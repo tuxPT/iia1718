@@ -1,5 +1,5 @@
 from agent import *
-import random,math,numpy,sys
+import random,math,sys,collections,pickle
 
 
 # This is an example of an agent to play the LongLife game.
@@ -8,6 +8,8 @@ import random,math,numpy,sys
 class StudentAgent(Agent):
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
+        self.number = 0
+        self.sum = 0
 
     def chooseAction(self, vision, msg):
         """Analyse input vision and msg, and choose an action to do and msg to post."""
@@ -20,21 +22,16 @@ class StudentAgent(Agent):
         # objects to bytes and back.)
 
         head = self.body[0] 
+        validact = self.valid_actions(head, vision)
+        
+        food = list(vision.food.keys())
+        food.sort(key=lambda x: self.distance(x, head))
+        if food != []:
+            pos = self.search_astar(head, food[0], vision)
+            if pos in validact.keys():
+                return validact[pos], b""
 
-        validact = []
-        targets = []
-        self.valid_actions(head, validact, vision)
-        for a in vision.food.keys():
-            targets.append(a)
-
-        targets.sort(key=lambda x: self.distance(head, x))
-        if targets != []:
-            pos = self.search_astar(head, targets[0], vision)
-            for act in validact:
-                newpos = self.world.translate(head,act)
-                if newpos == pos:
-                    return act,b"" 
-        return Stay,b""
+        return Stay, b""
 
     def distance(self, head, pos):
         dx = abs(head.x - pos.x)
@@ -46,41 +43,30 @@ class StudentAgent(Agent):
         return math.hypot(dx,dy)
 
     def search_astar(self, start, goal, vision):
-        closedset = [] # coordenadas visitadas
+        closedset = list() # coordenadas visitadas
         openset = [start] # coordenadas por visitar
-        cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
-
-        Gdict = {} # dicionario/mapa, dada uma posicao retorna o custo acumulado
+        cameFrom = dict() # dicionario/mapa, dada uma posicao retorna a posicao anterior
+        Gdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo acumulado
+        Fdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
         Gdict[start] = 0 
-
-        Fdict = {} # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
         Fdict[start] = self.distance(start, goal)
         
         while openset != []:
             current = openset[0]
             if current == goal:
                 return self.first_action(cameFrom, current)
-            
             openset.remove(current)
             closedset.append(current)
 
-            validact = []
-            self.valid_actions(current,validact,vision)
-            neighbors = []
-            for act in validact:
-                newpos = self.world.translate(current, act)
-                if newpos not in closedset:
-                    neighbors.append(newpos)
+            validact = self.valid_actions(current, vision).keys()
+            neighbors = list(pos for pos in validact if pos not in closedset) 
             neighbors.sort(key=lambda x: self.distance(x, goal))
             for pos in neighbors:
                 if pos not in openset:
                     openset.append(pos)
                 
                 gscore = Gdict[current] + self.distance(current,pos)
-                if pos not in Gdict:
-                    Gdict[pos] = sys.maxsize
                 
-                Gdict.setdefault(pos, sys.maxsize)
                 if gscore < Gdict[pos]:
                     cameFrom[pos] = current
                     Gdict[pos] = gscore
@@ -97,8 +83,10 @@ class StudentAgent(Agent):
         return second
         
 
-    def valid_actions(self, head, validact, vision):
+    def valid_actions(self, head, vision):
+        validact = dict()
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
             if newpos not in self.world.walls and newpos not in vision.bodies:
-                validact.append(act)
+                validact[newpos] = act
+        return validact
