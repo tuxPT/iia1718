@@ -81,7 +81,9 @@ class StudentAgent(Agent):
         if food != []:
             pos = self.search_astar(head, food[0][0], vision)
             if pos in validact.keys():
+                #print(self.name + ' - ' + str(validact[pos]))
                 return validact[pos], msgToSend
+            return Stay,msgToSend
 
         else: #Send message requiring food coordinates
             if(self.otherAgentAlive and not self.sendingTarget):
