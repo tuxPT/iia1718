@@ -13,7 +13,10 @@ import logging
 import sys
 import os
 import getopt
+import string
 
+# Alphabet for generated seeds:
+ALPHABET = string.ascii_uppercase + string.ascii_lowercase + string.digits
 
 USAGE = \
 """start.py [-h/--help
@@ -29,13 +32,19 @@ def main(argv):
 
     levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
     
+    hashseed = os.environ.get("PYTHONHASHSEED", "random")
+    random.seed(None)
+    seedstr = ''.join(random.SystemRandom().choice(ALPHABET) for _ in range(20))
+    seedstr = os.environ.get("LONGLIFESEED", seedstr)
+    
     inputfile = None
     visual = True
     studentAgent = Agent1
     debug = 2
     calibrate = False
+    
     try:
-        opts, args = getopt.getopt(argv,"hm:s:vcd:",["help","map=","student-agent=","no-video", "calibrate", "debug="])
+        opts, args = getopt.getopt(argv,"hm:s:vcd:", ["help","map=","student-agent=","no-video", "calibrate", "debug="])
     except getopt.GetoptError as e:
         print(e)
         print(USAGE)
@@ -74,8 +83,10 @@ def main(argv):
             width=60, height=40,
             filename=inputfile, walls=15,
             foodquant=4, timeslot=0.020, calibrate=calibrate,
-            visual=visual, fps=25, tilesize=20)
-        print("Launching game")
+            visual=visual, fps=25, tilesize=20,
+            seeds=(seedstr[::2], seedstr[1::2]))
+        print("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
+        logging.info("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
         score = game.start()
         print("Score:", score)
     except Exception as e:

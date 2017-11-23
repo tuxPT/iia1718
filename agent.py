@@ -5,6 +5,7 @@ class Agent:
     def __init__(self, name, body, world):
         self.name = name
         self.world = world      # My representation of the world
+        # world.size and world.walls are filled, remaining fields are empty!
         
         self.body = body        # List of body positions. body[0] is the head
         self.nutrients = {}     # Dict representing nutrient stock
