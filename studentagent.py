@@ -14,10 +14,10 @@ class StudentAgent(Agent):
     appendingTarget = False
     tToAppend = ()
 
+    init = True
+
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
-        self.number = 0
-        self.sum = 0
 
     def chooseAction(self, vision, msg):
         """Analyse input vision and msg, and choose an action to do and msg to post."""
@@ -34,6 +34,13 @@ class StudentAgent(Agent):
         targets = []
         msgReceived = ()
         self.sendingTarget = False
+
+        if self.init == True:
+            self.fill_dead_ends()
+
+
+        head = self.body[0] 
+
         validact = self.valid_actions(head, vision)
 
         food = list(vision.food.items())
@@ -157,6 +164,23 @@ class StudentAgent(Agent):
         validact = dict()
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.world.walls and newpos not in vision.bodies:
+            if newpos not in self.walls2 and newpos not in vision.bodies:
                 validact[newpos] = act
         return validact
+
+    def fill_dead_ends(self):
+        self.walls2 = self.world.walls.copy()
+        for pos in self.walls2:
+            # act_pos = [Point(0,1), Point(0-1), Point(1,0), Point(-1,0)]
+            # act_pos = ACTIONS[1:]
+
+            l1 = [self.world.normalize(i + pos) for i in ACTIONS[1:] if
+                  self.world.normalize(i + pos) not in self.walls2]
+
+            if l1 != []:
+                for j in l1:
+                    if self.world.normalize(j - pos + j) in self.walls2:
+                        self.walls2[self.world.normalize(j - pos + j)] = 'w'
+
+
+                        # [self.walls2[self.world.normalize(j)] for j in l1 if self.world.normalize(j-pos+j) in self.walls2]
