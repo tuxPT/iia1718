@@ -1,5 +1,12 @@
 # LongLife: a cooperating agents game
-# v1.3
+# v1.4
+# Features changed since 1.3:
+# * Agents receive a world only with walls and size filled in.
+#   Remaining world fields, such as foodfield, etc., are left empty.
+# * It is now possible to set random generator seeds.
+#   (You need to set PYTHONHASHSEED and LONGLIFESEED environment variables.)
+#   This allows repeating initial conditions and often the complete game.
+#
 # Features changed since 1.2:
 # * Redistribution of nutrients only happens between _live_ players.
 #
@@ -24,13 +31,15 @@ import time
 from world import *
 
 class Player:
-    def __init__(self, name, body, world, AgentClass):
+    def __init__(self, name, body, world, AgentClass, seed=None):
         self.name = name
         self.body = body[:]
         self.world = world
         self.age = 0
         
-        self.agent = AgentClass(name, body[:], copy.deepcopy(world))
+        agentWorld = World(world.size, seed=seed)
+        agentWorld.walls.update(world.walls)
+        self.agent = AgentClass(name, body[:], agentWorld)
         
         self.nutrients = {}
         self.nutrients['M'] = 1000
@@ -79,7 +88,8 @@ class AgentGame:
             width=60, height=40,
             filename=None, walls=15,
             foodquant=4, timeslot=0.020, calibrate=False,
-            visual=False, fps=25, tilesize=20):
+            visual=False, fps=25, tilesize=20,
+            seeds=(None, None)):
         
         logging.info("Original timeslot: {:.6f} s".format(timeslot))
         if calibrate:
@@ -98,7 +108,9 @@ class AgentGame:
             height = len(pxarray[0])
         
         ## Create the game world view:
-        self.world = World(Point(width, height))
+        self.world = World(Point(width, height), seed=seeds[0])
+        # Set seed for static generator:
+        random.seed(seeds[1])
         
         self.foodquant = foodquant  # quantity of each kind of food
         self.timeslot = timeslot    # time in seconds afforded per unit of S nutrient (Confused?)
@@ -128,7 +140,8 @@ class AgentGame:
         self.allPlayers = []
         for name in ["P0", "P1"]:
             body = self.world.generatePlayerBody(name)
-            self.allPlayers.append(Player(name, body, self.world, AgentClass))
+            player = Player(name, body, self.world, AgentClass, seed=random.randrange(2**60))
+            self.allPlayers.append(player)
         self.livePlayers = self.allPlayers[:]   # list of live players
         self.deadPlayers = []                   # list of dead players
     
@@ -191,7 +204,7 @@ class AgentGame:
         player.nutrients['S'] -= costT + costC
         # Acting consumes M nutrients:
         player.nutrients['M'] -= costA
-        logging.info("{} consumes {} units of S <= spent {} s thinking.".format(player.name, costT, player.timespent))
+        logging.info("{} consumes {} units of S <= spent {:.4f} s thinking.".format(player.name, costT, player.timespent))
         logging.info("{} consumes {} units of S <= spent {} bytes communicating.".format(player.name, costC, len(player.outbox)))
         logging.info("{} consumes {} units of M <= chose action {}.".format(player.name, costA, action))
         

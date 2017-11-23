@@ -52,6 +52,7 @@ class World:
     """
     
     def __init__(self, size, seed=None):
+        logging.debug("Creating World(size={}, seed={})".format(size, seed))
         self.rnd = random.Random(seed)  # random generator to use in this world
         self.size = size
         self.walls = {}
