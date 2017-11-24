@@ -36,8 +36,8 @@ class StudentAgent(Agent):
         self.sendingTarget = False
 
         if self.init == True:
-            self.fill_dead_ends()
-
+            self.fill_dead_ends(head, vision)
+            self.init = False
 
         head = self.body[0] 
 
@@ -90,6 +90,7 @@ class StudentAgent(Agent):
             if pos in validact.keys():
                 #print(self.name + ' - ' + str(validact[pos]))
                 return validact[pos], msgToSend
+
             return Stay,msgToSend
 
         else: #Send message requiring food coordinates
@@ -130,8 +131,8 @@ class StudentAgent(Agent):
 
         while openset != []:
             current = openset[0]
-            if current == goal:
-                return self.first_action(cameFrom, current)
+            if goal in cameFrom.keys():
+                return self.first_action(cameFrom, current, start)
             openset.remove(current)
             closedset.append(current)
 
@@ -149,38 +150,40 @@ class StudentAgent(Agent):
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
 
-        return start
+        return Point(-1, -1)
 
-    def first_action(self, cameFrom, current):
-        first = current
-        second = current
-        while first in cameFrom.keys() and cameFrom[first] != first:
-            second = first
-            first = cameFrom[first]
-        return second
+    def first_action(self, cameFrom, current, start):
+        while cameFrom[current] != start:
+            current = cameFrom[current]
+        return current
 
 
     def valid_actions(self, head, vision):
         validact = dict()
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.walls2 and newpos not in vision.bodies:
+            if newpos not in self.world.walls and newpos not in vision.bodies:
                 validact[newpos] = act
         return validact
 
-    def fill_dead_ends(self):
-        self.walls2 = self.world.walls.copy()
-        for pos in self.walls2:
+    def fill_dead_ends(self, head, vision):
+        validact = list(self.valid_actions(head, vision).keys())
+        emp = namedtuple('Vision', ['bodies', 'food'])
+        emp.bodies = {}
+        emp.food = {}
+        for pos in list(self.world.walls):
             # act_pos = [Point(0,1), Point(0-1), Point(1,0), Point(-1,0)]
             # act_pos = ACTIONS[1:]
 
             l1 = [self.world.normalize(i + pos) for i in ACTIONS[1:] if
-                  self.world.normalize(i + pos) not in self.walls2]
+                  self.world.normalize(i + pos) not in self.world.walls]
 
             if l1 != []:
                 for j in l1:
-                    if self.world.normalize(j - pos + j) in self.walls2:
-                        self.walls2[self.world.normalize(j - pos + j)] = 'w'
-
+                    if self.world.normalize(j - pos + j) in self.world.walls:
+                        res = self.search_astar(j, validact[0], emp)
+                        if res != Point(-1, -1):
+                            self.world.walls[j] = WALL
 
                         # [self.walls2[self.world.normalize(j)] for j in l1 if self.world.normalize(j-pos+j) in self.walls2]
+        #print(self.world.walls[Point(42,28)])
