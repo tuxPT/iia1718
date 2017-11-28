@@ -1,22 +1,25 @@
 #!/usr/bin/bash
 
+t0=random
+t1=Z33k0y9gHcEd7WikpJwW
+
 echo " mapa random"
-python start.py -c -v -s StudentAgent
+env PYTHONHASHSEED=$t0 LONGLIFESEED=$t1 python start.py -c -v -s StudentAgent
 
 echo -e "\n mapa 1"
-python start.py -m mapa1.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa1.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 2"
-python start.py -m mapa2.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa2.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 3"
-python start.py -m mapa3.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa3.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 4"
-python start.py -m mapa4.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa4.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 5"
-python start.py -m mapa5.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa5.bmp -c -v -s StudentAgent
 
 echo -e "\n mapa 6"
-python start.py -m mapa6.bmp -c -v -s StudentAgent
+env PYTHONHASHSEED=$t0 LONGLIFESEED=$t1 python start.py -m mapa6.bmp -c -v -s StudentAgent
