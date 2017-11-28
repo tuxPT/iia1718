@@ -1,10 +1,6 @@
 from agent import *
 import random,math,sys,collections,pickle
 
-
-# This is an example of an agent to play the LongLife game.
-# It is not very intelligent: it simply avoids crashing onto walls or bodies.
-
 class StudentAgent(Agent):
 
     noFoodNear = False
@@ -18,7 +14,7 @@ class StudentAgent(Agent):
 
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
-
+        #self.fill_dead_ends()
     def chooseAction(self, vision, msg):
         """Analyse input vision and msg, and choose an action to do and msg to post."""
         # This is the brain of the agent. It should be reimplemented on any subclass.
@@ -34,10 +30,6 @@ class StudentAgent(Agent):
         targets = []
         msgReceived = ()
         self.sendingTarget = False
-
-        if self.init == True:
-            self.fill_dead_ends(head, vision)
-            self.init = False
 
         head = self.body[0] 
 
@@ -64,7 +56,7 @@ class StudentAgent(Agent):
                 self.otherAgentAlive = False
 
         #Sort food
-        food.sort(key=lambda x: self.world.dist(head, x[0]))
+        food.sort(key=lambda x: self.distance(head, x[0]))
 
         #Sending Target
         if self.sendingTarget:
@@ -121,26 +113,28 @@ class StudentAgent(Agent):
         return math.hypot(dx,dy)
 
     def search_astar(self, start, goal, vision):
-        closedset = list() # coordenadas visitadas
-        openset = [start] # coordenadas por visitar
+        closedset = collections.deque() # coordenadas visitadas
+        openset = collections.deque()
+        openset.append(start) # coordenadas por visitar
         cameFrom = dict() # dicionario/mapa, dada uma posicao retorna a posicao anterior
         Gdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo acumulado
         Fdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
         Gdict[start] = 0
         Fdict[start] = self.distance(start, goal)
 
-        while openset != []:
-            current = openset[0]
+        while len(openset):
+            current = openset.popleft()
             if goal in cameFrom.keys():
                 return self.first_action(cameFrom, current, start)
-            openset.remove(current)
+            
             closedset.append(current)
-
             validact = self.valid_actions(current, vision).keys()
-            neighbors = list(pos for pos in validact if pos not in closedset)
+            clos = set(closedset)
+            neighbors = list(pos for pos in validact if pos not in clos)
             neighbors.sort(key=lambda x: self.distance(x, goal))
+            opens = set(openset)
             for pos in neighbors:
-                if pos not in openset:
+                if pos not in opens:
                     openset.append(pos)
 
                 gscore = Gdict[current] + self.distance(current,pos)
@@ -150,12 +144,13 @@ class StudentAgent(Agent):
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
 
-        return Point(-1, -1)
+        return None
 
     def first_action(self, cameFrom, current, start):
-        while cameFrom[current] != start:
-            current = cameFrom[current]
-        return current
+        pos = current
+        while cameFrom[pos] != start:
+            pos = cameFrom[pos]
+        return pos
 
 
     def valid_actions(self, head, vision):
@@ -167,23 +162,16 @@ class StudentAgent(Agent):
         return validact
 
     def fill_dead_ends(self, head, vision):
-        validact = list(self.valid_actions(head, vision).keys())
-        emp = namedtuple('Vision', ['bodies', 'food'])
-        emp.bodies = {}
-        emp.food = {}
-        for pos in list(self.world.walls):
-            # act_pos = [Point(0,1), Point(0-1), Point(1,0), Point(-1,0)]
-            # act_pos = ACTIONS[1:]
-
-            l1 = [self.world.normalize(i + pos) for i in ACTIONS[1:] if
-                  self.world.normalize(i + pos) not in self.world.walls]
-
-            if l1 != []:
-                for j in l1:
-                    if self.world.normalize(j - pos + j) in self.world.walls:
-                        res = self.search_astar(j, validact[0], emp)
-                        if res != Point(-1, -1):
-                            self.world.walls[j] = WALL
-
-                        # [self.walls2[self.world.normalize(j)] for j in l1 if self.world.normalize(j-pos+j) in self.walls2]
-        #print(self.world.walls[Point(42,28)])
+        dead_ends = set()
+        translate2 = [Point(1,0), Point(0,1), Point(-1,0), Point(0,-1)]
+        i = 0
+        end_found = True
+        while end_found:
+            for pos in self.world.walls:
+                for i in range(4):
+                    p1 = self.world.translate(translate2[i%4])
+                    p2 = self.world.translate(translate2[(i+1)%4])
+                    p3 = self.world.translate(translate2[(i+2)%4])
+                    if (p1 and p2 and p3) in self.world.walls:
+                        dead_ends.add(pos)
+                        end_found=True
