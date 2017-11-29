@@ -79,7 +79,7 @@ class StudentAgent(Agent):
         return validact
 
     def fill_dead_ends(self):
-        dead_ends = list()
+        dead_ends = list(self.world.walls.keys())
         translate2 = [Point(1,0), Point(0,1), Point(-1,0), Point(0,-1)]
         i = 0
         end_found = True
@@ -87,12 +87,16 @@ class StudentAgent(Agent):
         for x in range(self.world.size.x):
             for y in range(self.world.size.y):
                 pointList.append(Point(x,y))
-        pointList = [i for i in pointList if i not in list(self.world.walls.keys())]
-        for pos in pointList:
-            for i in range(3):
-                p1 = self.world.translate(pos, translate2[i%4])
-                p2 = self.world.translate(pos, translate2[(i+1)%4])
-                p3 = self.world.translate(pos, translate2[(i+2)%4])
-                if p1 in self.world.walls.keys() and p2 in self.world.walls.keys() and p3 in self.world.walls.keys():
-                    dead_ends.append(pos)
+        pointList = [i for i in pointList if i not in dead_ends]
+        while end_found == True:
+            end_found = False
+            for pos in pointList:
+                for i in range(3):
+                    p1 = self.world.translate(pos, translate2[i%4])
+                    p2 = self.world.translate(pos, translate2[(i+1)%4])
+                    p3 = self.world.translate(pos, translate2[(i+2)%4])
+                    if p1 in dead_ends and p2 in dead_ends and p3 in dead_ends:
+                        dead_ends.append(pos)
+                        end_found = True
+            pointList = [i for i in pointList if i not in dead_ends]
         return dead_ends
