@@ -6,31 +6,24 @@ import random,math,sys,collections,pickle
 # It is not very intelligent: it simply avoids crashing onto walls or bodies.
 
 class StudentAgent(Agent):
+
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
         self.number = 0
         self.sum = 0
+        self.walls = list(self.fill_dead_ends()) + list(self.world.walls.keys())
+        #print(self.walls)
 
     def chooseAction(self, vision, msg):
-        """Analyse input vision and msg, and choose an action to do and msg to post."""
-        # This is the brain of the agent. It should be reimplemented on any subclass.
-        # It may use the fields (.name, .world, .body, .nutrients, .age, .timespent)
-        # and the parameters (vision and msg) to decide what to do.
-        # It must return an action (one of the ACTIONS),
-        # and a message (a possibly empty bytes object) to send to the other agent.
-        # (You may want to use pickle.dumps / pickle.loads to convert
-        # objects to bytes and back.)
-
-        head = self.body[0] 
+        head = self.body[0]
         validact = self.valid_actions(head, vision)
-        
+
         food = list(vision.food.keys())
         food.sort(key=lambda x: self.distance(x, head))
         if food != []:
             pos = self.search_astar(head, food[0], vision)
             if pos in validact.keys():
                 return validact[pos], b""
-
         return Stay, b""
 
     def distance(self, head, pos):
@@ -43,35 +36,30 @@ class StudentAgent(Agent):
         return math.hypot(dx,dy)
 
     def search_astar(self, start, goal, vision):
-        closedset = list() # coordenadas visitadas
+        closedset = [] # coordenadas visitadas
         openset = [start] # coordenadas por visitar
-        cameFrom = dict() # dicionario/mapa, dada uma posicao retorna a posicao anterior
+        cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
         Gdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo acumulado
         Fdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
-        Gdict[start] = 0 
+        Gdict[start] = 0
         Fdict[start] = self.distance(start, goal)
-        
         while openset != []:
             current = openset[0]
             if current == goal:
                 return self.first_action(cameFrom, current)
             openset.remove(current)
             closedset.append(current)
-
             validact = self.valid_actions(current, vision).keys()
-            neighbors = list(pos for pos in validact if pos not in closedset) 
+            neighbors = [pos for pos in validact if pos not in closedset]
             neighbors.sort(key=lambda x: self.distance(x, goal))
             for pos in neighbors:
                 if pos not in openset:
                     openset.append(pos)
-                
                 gscore = Gdict[current] + self.distance(current,pos)
-                
                 if gscore < Gdict[pos]:
                     cameFrom[pos] = current
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
-                
         return start
 
     def first_action(self, cameFrom, current):
@@ -81,12 +69,30 @@ class StudentAgent(Agent):
             second = first
             first = cameFrom[first]
         return second
-        
 
     def valid_actions(self, head, vision):
-        validact = dict()
+        validact = {}
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.world.walls and newpos not in vision.bodies:
+            if newpos not in self.walls and newpos not in vision.bodies:
                 validact[newpos] = act
         return validact
+
+    def fill_dead_ends(self):
+        dead_ends = list()
+        translate2 = [Point(1,0), Point(0,1), Point(-1,0), Point(0,-1)]
+        i = 0
+        end_found = True
+        pointList= []
+        for x in range(self.world.size.x):
+            for y in range(self.world.size.y):
+                pointList.append(Point(x,y))
+        pointList = [i for i in pointList if i not in list(self.world.walls.keys())]
+        for pos in pointList:
+            for i in range(3):
+                p1 = self.world.translate(pos, translate2[i%4])
+                p2 = self.world.translate(pos, translate2[(i+1)%4])
+                p3 = self.world.translate(pos, translate2[(i+2)%4])
+                if p1 in self.world.walls.keys() and p2 in self.world.walls.keys() and p3 in self.world.walls.keys():
+                    dead_ends.append(pos)
+        return dead_ends
