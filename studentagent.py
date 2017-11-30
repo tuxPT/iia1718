@@ -1,5 +1,6 @@
 from agent import *
-import random,math,sys,collections,pickle
+import random,math,sys,collections,pickle,pygame
+import game
 
 
 # This is an example of an agent to play the LongLife game.
@@ -11,7 +12,7 @@ class StudentAgent(Agent):
         super().__init__(name, body, world)
         self.number = 0
         self.sum = 0
-        self.walls = list(self.fill_dead_ends()) + list(self.world.walls.keys())
+        self.walls = list(self.fill_dead_ends())
         #print(self.walls)
 
     def chooseAction(self, vision, msg):
@@ -91,7 +92,7 @@ class StudentAgent(Agent):
         while end_found == True:
             end_found = False
             for pos in pointList:
-                for i in range(3):
+                for i in range(4):
                     p1 = self.world.translate(pos, translate2[i%4])
                     p2 = self.world.translate(pos, translate2[(i+1)%4])
                     p3 = self.world.translate(pos, translate2[(i+2)%4])
