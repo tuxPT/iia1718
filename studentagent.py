@@ -1,31 +1,59 @@
 from agent import *
-import random,math,sys,collections,pickle,pygame
-import game
-
-
-# This is an example of an agent to play the LongLife game.
-# It is not very intelligent: it simply avoids crashing onto walls or bodies.
+import random,math,sys,collections,pickle
 
 class StudentAgent(Agent):
 
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
-        self.number = 0
-        self.sum = 0
-        self.walls = list(self.fill_dead_ends())
-        #print(self.walls)
+        self.fill_dead_ends()
+        self.world.deadZone = self.dead_ends
+        self.path_found1 = [False]
+        self.path_found2 = [False]
+        self.path1 = collections.deque()
+        self.path2 = collections.deque()
+        self.path = self.path1
+        self.path_found = self.path_found1
+        self.swap = True
 
     def chooseAction(self, vision, msg):
+        self.switch_agent() 
+        print(self.swap)
+        print(self.path_found)
+        print(self.path)
         head = self.body[0]
         validact = self.valid_actions(head, vision)
-
+        validact[head] = Stay
         food = list(vision.food.keys())
         food.sort(key=lambda x: self.distance(x, head))
+        return self.select_search(food, head, vision, validact)
+        
+    def select_search(self, food, head, vision, validact):
         if food != []:
-            pos = self.search_astar(head, food[0], vision)
-            if pos in validact.keys():
-                return validact[pos], b""
+            parray = [pos for pos in validact if self.distance(pos, food[0]) < self.distance(head, food[0])]
+            if parray != []:
+                self.path_found[0] = False
+                self.path.clear()
+                return validact[parray[0]], b""
+
+            if self.path_found[0] == False:
+                self.search(self.path, head, food[0], vision)
+                self.path_found[0] = True
+
+            if len(self.path) > 0 or self.path_found[0]:
+                return validact[self.path.popleft()], b""
+            
+        self.path_found[0] = False
         return Stay, b""
+
+    def switch_agent(self):
+        if self.swap:
+            self.path_found = self.path_found1
+            self.path = self.path1
+            self.swap = False
+        else:
+            self.path_found = self.path_found2
+            self.path = self.path2
+            self.swap = True
 
     def distance(self, head, pos):
         dx = abs(head.x - pos.x)
@@ -36,7 +64,7 @@ class StudentAgent(Agent):
             dy = self.world.size.y - dy
         return math.hypot(dx,dy)
 
-    def search_astar(self, start, goal, vision):
+    def search(self, deque, start, goal, vision):
         closedset = [] # coordenadas visitadas
         openset = [start] # coordenadas por visitar
         cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
@@ -47,7 +75,7 @@ class StudentAgent(Agent):
         while openset != []:
             current = openset[0]
             if current == goal:
-                return self.first_action(cameFrom, current)
+                return self.find_path(deque, cameFrom, current, start)
             openset.remove(current)
             closedset.append(current)
             validact = self.valid_actions(current, vision).keys()
@@ -61,43 +89,43 @@ class StudentAgent(Agent):
                     cameFrom[pos] = current
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
-        return start
 
-    def first_action(self, cameFrom, current):
-        first = current
-        second = current
-        while first in cameFrom.keys() and cameFrom[first] != first:
-            second = first
-            first = cameFrom[first]
-        return second
+        deque.clear()
+        deque.appendleft(start)
+
+    def find_path(self, deque,cameFrom, end, start):
+        deque.clear()
+        current = end
+        deque.appendleft(current)
+        while cameFrom[current] != start:
+            current = cameFrom[current]
+            deque.appendleft(current)
 
     def valid_actions(self, head, vision):
         validact = {}
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.walls and newpos not in vision.bodies:
+            if newpos not in self.dead_ends and newpos not in vision.bodies:
                 validact[newpos] = act
         return validact
 
     def fill_dead_ends(self):
-        dead_ends = list(self.world.walls.keys())
-        translate2 = [Point(1,0), Point(0,1), Point(-1,0), Point(0,-1)]
-        i = 0
-        end_found = True
+        self.dead_ends = set(self.world.walls.keys())
         pointList= []
         for x in range(self.world.size.x):
             for y in range(self.world.size.y):
                 pointList.append(Point(x,y))
-        pointList = [i for i in pointList if i not in dead_ends]
-        while end_found == True:
-            end_found = False
-            for pos in pointList:
-                for i in range(4):
-                    p1 = self.world.translate(pos, translate2[i%4])
-                    p2 = self.world.translate(pos, translate2[(i+1)%4])
-                    p3 = self.world.translate(pos, translate2[(i+2)%4])
-                    if p1 in dead_ends and p2 in dead_ends and p3 in dead_ends:
-                        dead_ends.append(pos)
-                        end_found = True
-            pointList = [i for i in pointList if i not in dead_ends]
-        return dead_ends
+        pointList = [i for i in pointList if i not in self.dead_ends]
+        vision = namedtuple('Vision', ['bodies', 'food'])
+        vision.bodies = {}
+        for pos in pointList:
+            neighbors = self.valid_actions(pos, vision)
+            empty = [i for i in neighbors if i not in self.dead_ends]
+            nextpos = pos
+            while len(empty) == 1:
+                self.dead_ends.add(nextpos)
+                pointList = [i for i in pointList if i not in self.dead_ends]
+                nextpos = empty[0]
+                neighbors = self.valid_actions(nextpos, vision)
+                empty = [i for i in neighbors if i not in self.dead_ends]
+
