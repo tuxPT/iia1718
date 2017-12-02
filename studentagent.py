@@ -5,56 +5,56 @@ class StudentAgent(Agent):
 
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
-        self.fill_dead_ends()
-        self.world.deadZone = self.dead_ends
-        self.path_found1 = [False]
-        self.path_found2 = [False]
-        self.path1 = collections.deque()
-        self.path2 = collections.deque()
-        self.path = self.path1
-        self.path_found = self.path_found1
+        self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
+        self.a1 = agent() # referencia para agente1(par)
+        self.a2 = agent() # referencia para agente2(impar)
         self.swap = True
 
     def chooseAction(self, vision, msg):
         self.switch_agent() 
-        print(self.swap)
-        print(self.path_found)
-        print(self.path)
         head = self.body[0]
         validact = self.valid_actions(head, vision)
-        validact[head] = Stay
         food = list(vision.food.keys())
         food.sort(key=lambda x: self.distance(x, head))
+        # retorna a ação
         return self.select_search(food, head, vision, validact)
         
     def select_search(self, food, head, vision, validact):
         if food != []:
             parray = [pos for pos in validact if self.distance(pos, food[0]) < self.distance(head, food[0])]
-            if parray != []:
-                self.path_found[0] = False
-                self.path.clear()
+            # vai direto à posição mais próxima do destino
+            if parray != [] and not self.a.path_found:
+                self.a.path.clear()
                 return validact[parray[0]], b""
 
-            if self.path_found[0] == False:
-                self.search(self.path, head, food[0], vision)
-                self.path_found[0] = True
+            # algoritmo de pesquisa a_star
+            if not self.a.path_found:
+                self.a.path.clear()
+                self.a.path_found = self.search(self.a.path, head, food[0], vision)
 
-            if len(self.path) > 0 or self.path_found[0]:
-                return validact[self.path.popleft()], b""
-            
-        self.path_found[0] = False
+            if self.a.path_found:
+                # evita a utilização de uma deque vazia
+                if len(self.a.path) == 1:
+                    self.a.path_found = False
+                
+                pos = self.a.path.popleft()
+                if pos in validact.keys():
+                    return validact[pos], b""
+                else:
+                    return Stay, b""
+
         return Stay, b""
 
+    # troca as referencias da classe agent
     def switch_agent(self):
         if self.swap:
-            self.path_found = self.path_found1
-            self.path = self.path1
-            self.swap = False
+            self.a = self.a1
         else:
-            self.path_found = self.path_found2
-            self.path = self.path2
-            self.swap = True
+            self.a = self.a2
+        
+        self.swap = not self.swap
 
+    # menor distância entre dois pontos num plano toroidal
     def distance(self, head, pos):
         dx = abs(head.x - pos.x)
         dy = abs(head.y - pos.y)
@@ -64,6 +64,7 @@ class StudentAgent(Agent):
             dy = self.world.size.y - dy
         return math.hypot(dx,dy)
 
+    # Search A_Star com dicionários
     def search(self, deque, start, goal, vision):
         closedset = [] # coordenadas visitadas
         openset = [start] # coordenadas por visitar
@@ -75,32 +76,38 @@ class StudentAgent(Agent):
         while openset != []:
             current = openset[0]
             if current == goal:
-                return self.find_path(deque, cameFrom, current, start)
+                self.find_path(deque, cameFrom, current, start)
+                return True
+                
             openset.remove(current)
             closedset.append(current)
             validact = self.valid_actions(current, vision).keys()
             neighbors = [pos for pos in validact if pos not in closedset]
             neighbors.sort(key=lambda x: self.distance(x, goal))
+
             for pos in neighbors:
                 if pos not in openset:
                     openset.append(pos)
+                
                 gscore = Gdict[current] + self.distance(current,pos)
+
                 if gscore < Gdict[pos]:
                     cameFrom[pos] = current
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
 
-        deque.clear()
-        deque.appendleft(start)
+        return False
 
+    # devolve uma lifo sendo que o ultimo é na verdade a proxima posicao
     def find_path(self, deque,cameFrom, end, start):
-        deque.clear()
         current = end
-        deque.appendleft(current)
         while cameFrom[current] != start:
-            current = cameFrom[current]
             deque.appendleft(current)
+            current = cameFrom[current]
 
+        deque.appendleft(current)
+
+    # devolve um dicionário de pontos para ações
     def valid_actions(self, head, vision):
         validact = {}
         for act in ACTIONS[1:]:
@@ -111,7 +118,7 @@ class StudentAgent(Agent):
 
     def fill_dead_ends(self):
         self.dead_ends = set(self.world.walls.keys())
-        pointList= []
+        pointList= [] # lista de pontos que podem ser percorridos
         for x in range(self.world.size.x):
             for y in range(self.world.size.y):
                 pointList.append(Point(x,y))
@@ -122,6 +129,7 @@ class StudentAgent(Agent):
             neighbors = self.valid_actions(pos, vision)
             empty = [i for i in neighbors if i not in self.dead_ends]
             nextpos = pos
+            # porque um dead_end tem sempre 3 paredes e 1 bloco livre
             while len(empty) == 1:
                 self.dead_ends.add(nextpos)
                 pointList = [i for i in pointList if i not in self.dead_ends]
@@ -129,3 +137,7 @@ class StudentAgent(Agent):
                 neighbors = self.valid_actions(nextpos, vision)
                 empty = [i for i in neighbors if i not in self.dead_ends]
 
+class agent:
+    def __init__(self):
+        self.path = collections.deque()
+        self.path_found = False
