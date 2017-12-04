@@ -6,12 +6,9 @@ class StudentAgent(Agent):
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
-        self.a1 = agent() # referencia para agente1(par)
-        self.a2 = agent() # referencia para agente2(impar)
-        self.swap = True
+        self.a = agent()
 
     def chooseAction(self, vision, msg):
-        self.switch_agent() 
         head = self.body[0]
         validact = self.valid_actions(head, vision)
         food = list(vision.food.keys())
@@ -44,15 +41,6 @@ class StudentAgent(Agent):
                     return Stay, b""
 
         return Stay, b""
-
-    # troca as referencias da classe agent
-    def switch_agent(self):
-        if self.swap:
-            self.a = self.a1
-        else:
-            self.a = self.a2
-        
-        self.swap = not self.swap
 
     # menor distância entre dois pontos num plano toroidal
     def distance(self, head, pos):
