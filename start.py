@@ -23,6 +23,7 @@ USAGE = \
           -s/--student-agent AgentName
           -m/--map <mapfile>
           -v/--no-video
+          -f/--fps <FPS>
           -c/--calibrate
           -d/--debug Level(0--4)
 """
@@ -39,12 +40,13 @@ def main(argv):
     
     inputfile = None
     visual = True
+    fps = 25
     studentAgent = Agent1
     debug = 2
     calibrate = False
     
     try:
-        opts, args = getopt.getopt(argv,"hm:s:vcd:", ["help","map=","student-agent=","no-video", "calibrate", "debug="])
+        opts, args = getopt.getopt(argv,"hm:s:vf:cd:", ["help","map=", "student-agent=", "no-video", "fps=", "calibrate", "debug="])
     except getopt.GetoptError as e:
         print(e)
         print(USAGE)
@@ -61,6 +63,8 @@ def main(argv):
             studentAgent = getattr(classmodule, arg)
         elif opt in ["-v", "--no-video"]:
             visual = False 
+        elif opt in ["-f", "--fps"]:
+            fps = int(arg)
         elif opt in ["-c", "--calibrate"]:
             calibrate = True
         elif opt in ["-d", "--debug"]:
@@ -70,23 +74,26 @@ def main(argv):
     
     try:
         # Try to pin process to a single CPU (to have more predictable times)
-        logging.debug("Original affinity: {}".format(os.sched_getaffinity(0)))
-        os.sched_setaffinity(0, [0])  # TODO: does not seem to make a difference...
-        #os.system("taskset -p 0x01 {}".format(os.getpid()))
-        logging.debug("New affinity: {}".format(os.sched_getaffinity(0)))
+        aff = os.sched_getaffinity(0)
+        logging.debug("Original affinity: {}".format(aff))
+        cpu = aff.pop()
+        os.sched_setaffinity(0, [cpu])  # TODO: does not seem to make a difference...
+        aff = os.sched_getaffinity(0)
+        logging.debug("New affinity: {}".format(aff))
     except:
         # Operating System may not support setaffinity.  Not a big deal.
         logging.debug("Could not set CPU affinity for the process.")
     
     try:
+        print("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
+        logging.info("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
+        logging.info("cwd={!r} argv={!r} path={!r}".format(os.getcwd(), sys.argv, sys.path))
         game = AgentGame(AgentClass=studentAgent,
             width=60, height=40,
             filename=inputfile, walls=15,
             foodquant=4, timeslot=0.020, calibrate=calibrate,
-            visual=visual, fps=25, tilesize=20,
+            visual=visual, fps=fps, tilesize=20,
             seeds=(seedstr[::2], seedstr[1::2]))
-        print("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
-        logging.info("Launching game.  PYTHONHASHSEED={} LONGLIFESEED={}".format(hashseed, seedstr))
         score = game.start()
         print("Score:", score)
     except Exception as e:

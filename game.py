@@ -1,5 +1,13 @@
 # LongLife: a cooperating agents game
-# v1.4
+# v1.5  (This is the version used to score the agents on the first submission.)
+#
+# Changes since 1.4:
+# * Timeout feature: agent.chooseAction is interrupted if it takes longer
+#   than the nutrients would allow.
+# * Randomly generated maps are saved to "currentmap.bmp".
+# * New -f/--fps option in start.py to set the speed of visualization.
+# * Minor improvements and cleanup.
+#
 # Features changed since 1.3:
 # * Agents receive a world only with walls and size filled in.
 #   Remaining world fields, such as foodfield, etc., are left empty.
@@ -29,6 +37,8 @@ from pygame.locals import *
 import time
 
 from world import *
+#from agent import Agent
+
 
 class Player:
     def __init__(self, name, body, world, AgentClass, seed=None):
@@ -121,7 +131,11 @@ class AgentGame:
             self.world.loadField(pxarray)
         else:
             self.world.generateWalls(walls)
-        
+            # Save a copy of the current field
+            pxarray = pygame.PixelArray(pygame.Surface(self.world.size))
+            self.world.saveField(pxarray)
+            pygame.image.save(pxarray.surface, "currentmap.bmp")
+                
         self.fps = fps      # Frames per second
         self.tilesize = tilesize    # tile size
         
@@ -362,13 +376,18 @@ class AgentGame:
                 vision.food = player.filterVision(self.world.food)
                 
                 ## Call the AGENT (and measure time and catch errors)
+                timeout = player.nutrients['S']*self.timeslot + 1.0
                 s = time.process_time()
                 try:
+                    setDeadline(s, timeout, time.process_time)
                     action, player.outbox = player.agent.chooseAction(vision, mailbox)
                 except Exception as e:
                     action, player.outbox = None, b""  # default if agent fails => Die
                     logging.exception(e)
+                finally:
+                    unsetDeadline()
                 f = time.process_time()
+                
                 player.timespent = f - s
                 logging.debug("{}.timespent = {:.4f} s".format(player.name, player.timespent))
                 ## Execute the action and update the game
@@ -402,3 +421,91 @@ class AgentGame:
         
         score = sum([p.age for p in self.allPlayers])
         return score
+
+
+## The timeout feature. (NOT VERY PORTABLE! May work only on UNIX systems.)
+
+import signal
+import math
+
+def timeoutHandler(signum, frame):
+    """Handler for SIGALRM.
+    Funtion keeps 3 important attributes: .clock, .startTime, .limit."""
+    currTime = timeoutHandler.clock()
+    elapsed = currTime - timeoutHandler.startTime
+    logging.debug("timeoutHandler elapsed={} limit={}.".format(elapsed, timeoutHandler.limit))
+    if elapsed < timeoutHandler.limit:
+        logging.debug("timeoutHandler woke up too early! Reseting alarm.")
+        signal.alarm(int(math.ceil(timeoutHandler.limit - elapsed)))
+    else:
+        logging.debug("timeoutHandler interrupting.")
+        # reset previous handler
+        unsetDeadline()
+        raise TimeoutError("Timeout reached.")
+
+def setDeadline(start, limit, clock):
+    """Set a deadline for after timeout seconds (int>0), measured using clock function."""
+    logging.debug("setDeadline start={} limit={} clock={}.".format(start, limit, clock))
+    ## Set a timeout
+    timeoutHandler.prevHandler = signal.signal(signal.SIGALRM, timeoutHandler)
+    timeoutHandler.startTime = start
+    timeoutHandler.limit = limit
+    timeoutHandler.clock = clock
+    #currTime = timeoutHandler.clock()
+    signal.alarm(int(math.ceil(limit)))
+    return start
+
+def unsetDeadline():
+    """Remove a pending deadline."""
+    signal.alarm(0)
+    signal.signal(signal.SIGALRM, timeoutHandler.prevHandler)
+
+
+## ATTEMPTS at making the timeout feature as a context manager.
+## NOT WORKING YET!
+from contextlib import contextmanager
+
+# NOT WORKING
+@contextmanager
+def timelimit(limit, clock):
+    """Run block subject to a time limit as measured by a given clock function."""
+    try:
+        logging.debug("setDeadline start={} limit={} clock={}.".format(start, limit, clock))
+        ## Set a timeout
+        timeoutHandler.prevHandler = signal.signal(signal.SIGALRM, timeoutHandler)
+        timeoutHandler.startTime = start
+        timeoutHandler.limit = limit
+        timeoutHandler.clock = clock
+        signal.alarm(int(math.ceil(limit)))
+        start = clock()
+        yield start
+    finally:
+        signal.signal(signal.SIGALRM, timeoutHandler.prevHandler)
+        signal.alarm(0)
+        
+
+
+def handler(signum, frame):
+    raise TimeoutError("time limit reached")
+
+# NOT WORKING
+@contextmanager
+def timelimit2(limit, clock):
+    """Run block subject to a time limit as measured by a given clock function."""
+    signal.alarm(0)                                         # cancel any pending alarm
+    prevHandler = signal.signal(signal.SIGALRM, handler)    # register our handler
+    start = clock()
+    logging.debug("timelimit: start={} limit={} clock={}.".format(start, limit, clock))
+    elapsed = 0.0
+    try:
+        logging.debug("timelimit: {}<{}: setting alarm.".format(elapsed, limit))
+        signal.alarm(int(math.ceil(limit - elapsed)))
+        yield start              # execute block
+        limit = elapsed     # concluded within limit => force stop
+    except TimeoutError as e:       # alarm expired (real time)
+        elapsed = clock() - start   # how much time passed in our clock?
+    finally:
+        logging.debug("timelimit: {}<{}: setting alarm.".format(elapsed, limit))
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, prevHandler)
+        

@@ -52,7 +52,7 @@ class World:
     """
     
     def __init__(self, size, seed=None):
-        logging.debug("Creating World(size={}, seed={})".format(size, seed))
+        logging.debug("Creating World(size={!r}, seed={!r})".format(size, seed))
         self.rnd = random.Random(seed)  # random generator to use in this world
         self.size = size
         self.walls = {}
@@ -158,21 +158,27 @@ class World:
     def loadField(self, pxarray):
         for x in range(len(pxarray)):
             for y in range(len(pxarray[x])):
-                p = pxarray[x][y] & 0xFFFFFFFF #fix signed/unsigned
-                if p == 0xFF000000:
-                    p = 0xAA7942
-                if p == 0:
-                    p = 0xFFFFFF
-                p = p & 0xFFFFFF
-                if not p in [0x00F900, 0xFF2600, 0xAA7942, 0x000000, 0xFFFFFF, 0]: #food, player, wall, oldwall, empty, oldempty 
-                    logging.error("UNKNOWN: {:02X}".format(p))
-                if p == 0x00F900:
+                p = pxarray[x][y] & 0xFFFFFF
+                if p == 0x00F900:   #food
                     self.foodfield.append(Point(x,y))
-                elif p == 0xFF2600:
+                elif p == 0xFF2600: #player
                     self.playerfield.append(Point(x,y))
-                elif p == 0xAA7942: 
+                elif p == 0xAA7942: #wall
                     self.walls[Point(x, y)] = WALL
-
+                elif p == 0xFFFFFF: #empty
+                    pass
+                else:   # not in [0xFF000000, 0]: #oldwall, oldempty 
+                    logging.error("UNKNOWN color: {:02X}".format(p))
+    
+    def saveField(self, pxarray):
+        pxarray[:,:] = 0xFFFFFF
+        for pos in self.walls:
+            pxarray[pos] = 0xAA7942
+        for pos in self.foodfield:
+            pxarray[pos] = 0x00F900
+        for pos in self.playerfield:
+            pxarray[pos ] = 0xFF2600
+        
     def generateWalls(self, level):
         for i in range(1,level+1):
             lo = self.randCoords() #last wall
