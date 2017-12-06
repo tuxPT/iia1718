@@ -1,46 +1,83 @@
 from agent import *
-import random,math,sys,collections,pickle
+import random,math,sys,collections,pickle,heapq
 
 class StudentAgent(Agent):
 
     def __init__(self, name, body, world):
         super().__init__(name, body, world)
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
-        self.a = agent()
+        self.path = collections.deque()
 
     def chooseAction(self, vision, msg):
         head = self.body[0]
-        validact = self.valid_actions(head, vision)
+        bodies = vision.bodies
+        validact = self.valid_actions(head, bodies)
         food = list(vision.food.keys())
         food.sort(key=lambda x: self.distance(x, head))
-        # retorna a ação
-        return self.select_search(food, head, vision, validact)
-        
-    def select_search(self, food, head, vision, validact):
-        if food != []:
-            parray = [pos for pos in validact if self.distance(pos, food[0]) < self.distance(head, food[0])]
-            # vai direto à posição mais próxima do destino
-            if parray != [] and not self.a.path_found:
-                self.a.path.clear()
-                return validact[parray[0]], b""
+        if food:
+            direct_food = [pos for pos in food if not self.path_needed(head, pos, bodies)]
+            if direct_food:
+                nextpos = [pos for pos in validact if self.distance(pos, direct_food[0]) < self.distance(head, direct_food[0])]
+                return validact[nextpos[0]], b""
 
-            # algoritmo de pesquisa a_star
-            if not self.a.path_found:
-                self.a.path.clear()
-                self.a.path_found = self.search(self.a.path, head, food[0], vision)
-
-            if self.a.path_found:
-                # evita a utilização de uma deque vazia
-                if len(self.a.path) == 1:
-                    self.a.path_found = False
-                
-                pos = self.a.path.popleft()
-                if pos in validact.keys():
-                    return validact[pos], b""
+            else:
+                new_path = self.search(head, food[0], bodies)
+                if self.path:
+                    nextpos = self.path.pop()
+                    self.path.append(nextpos)
+                    if nextpos not in validact:
+                        goal = self.path.popleft()
+                        self.path.appendleft(goal)
+                        self.path = self.search(head, goal, bodies)
+                    
+                    if new_path:
+                        self.path = self.shortest_path(new_path, self.path)
+                elif new_path:
+                        self.path = new_path
                 else:
                     return Stay, b""
+                if self.path:
+                    nextpos = self.path.pop()
+                    return validact[nextpos], b""
+                
+                return Stay, b""
+        else:
+            if self.path:
+                nextpos = self.path.pop()
+                self.path.append(nextpos)
+                if nextpos not in validact:
+                    goal = self.path.popleft()
+                    self.path.appendleft(goal)
+                    self.path = self.search(head, goal, bodies)
 
-        return Stay, b""
+                if self.path:
+                    nextpos = self.path.pop()
+                    return validact[nextpos], b""
+                
+            return Stay, b""
+        
+    # verifica se é necessário um path para chegar á posição
+    def path_needed(self, start, goal, bodies):
+        head = start
+        distance = self.distance(head, goal)
+        while head != goal:
+            validact = self.valid_actions(head, bodies)
+            nextpos = [pos for pos in validact if self.distance(pos, goal) < distance]
+            if nextpos:
+                head = nextpos[0]
+                distance = self.distance(head, goal)
+            else:
+                return True
+        
+        return False
+
+    # retorna o path mais curto
+    def shortest_path(self, path1, path2):
+        if len(path1) < len(path2):
+            return path1
+        else:
+            return path2
+
 
     # menor distância entre dois pontos num plano toroidal
     def distance(self, head, pos):
@@ -53,7 +90,7 @@ class StudentAgent(Agent):
         return math.hypot(dx,dy)
 
     # Search A_Star com dicionários
-    def search(self, deque, start, goal, vision):
+    def search(self, start, goal, bodies):
         closedset = [] # coordenadas visitadas
         openset = [start] # coordenadas por visitar
         cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
@@ -63,13 +100,12 @@ class StudentAgent(Agent):
         Fdict[start] = self.distance(start, goal)
         while openset != []:
             current = openset[0]
-            if current == goal:
-                self.find_path(deque, cameFrom, current, start)
-                return True
+            if current == goal and current != start:
+                return self.find_path(cameFrom, current, start)
                 
             openset.remove(current)
             closedset.append(current)
-            validact = self.valid_actions(current, vision).keys()
+            validact = self.valid_actions(current, bodies).keys()
             neighbors = [pos for pos in validact if pos not in closedset]
             neighbors.sort(key=lambda x: self.distance(x, goal))
 
@@ -84,23 +120,25 @@ class StudentAgent(Agent):
                     Gdict[pos] = gscore
                     Fdict[pos] = Gdict[pos] +self.distance(current,goal)
 
-        return False
+        return collections.deque()
 
     # devolve uma lifo sendo que o ultimo é na verdade a proxima posicao
-    def find_path(self, deque,cameFrom, end, start):
+    def find_path(self, cameFrom, end, start):
         current = end
-        while cameFrom[current] != start:
-            deque.appendleft(current)
+        deque = collections.deque()
+        deque.append(current)
+        while current in cameFrom and cameFrom[current] != start:
             current = cameFrom[current]
+            deque.append(current)
 
-        deque.appendleft(current)
+        return deque
 
     # devolve um dicionário de pontos para ações
-    def valid_actions(self, head, vision):
+    def valid_actions(self, head, bodies):
         validact = {}
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.dead_ends and newpos not in vision.bodies:
+            if newpos not in self.dead_ends and newpos not in bodies:
                 validact[newpos] = act
         return validact
 
@@ -111,10 +149,9 @@ class StudentAgent(Agent):
             for y in range(self.world.size.y):
                 pointList.append(Point(x,y))
         pointList = [i for i in pointList if i not in self.dead_ends]
-        vision = namedtuple('Vision', ['bodies', 'food'])
-        vision.bodies = {}
+        bodies = {}
         for pos in pointList:
-            neighbors = self.valid_actions(pos, vision)
+            neighbors = self.valid_actions(pos, bodies)
             empty = [i for i in neighbors if i not in self.dead_ends]
             nextpos = pos
             # porque um dead_end tem sempre 3 paredes e 1 bloco livre
@@ -122,10 +159,5 @@ class StudentAgent(Agent):
                 self.dead_ends.add(nextpos)
                 pointList = [i for i in pointList if i not in self.dead_ends]
                 nextpos = empty[0]
-                neighbors = self.valid_actions(nextpos, vision)
+                neighbors = self.valid_actions(nextpos, bodies)
                 empty = [i for i in neighbors if i not in self.dead_ends]
-
-class agent:
-    def __init__(self):
-        self.path = collections.deque()
-        self.path_found = False
