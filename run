@@ -1,25 +1,30 @@
 #!/usr/bin/bash
 
-t0=random
-t1=Z33k0y9gHcEd7WikpJwW
+export LONGLIFESEED=Z33k0y9gHcEd7WikpJwW
 
 echo " mapa random"
-env PYTHONHASHSEED=$t0 LONGLIFESEED=$t1 python start.py -c $1 $2 -s StudentAgent
+python start.py -c -s StudentAgent $1
 
 echo -e "\n mapa 1"
-env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa1.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa1.bmp -c -s StudentAgent "$@"
 
 echo -e "\n mapa 2"
-env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa2.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa2.bmp -c -s StudentAgent "$@"
 
 echo -e "\n mapa 3"
-env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa3.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa3.bmp -c -s StudentAgent "$@"
 
 echo -e "\n mapa 4"
-env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa4.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa4.bmp -c -s StudentAgent "$@"
 
 echo -e "\n mapa 5"
-env PYTHONHASHSEED="$t0" LONGLIFESEED="$t1" python start.py -m mapa5.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa5.bmp -c -s StudentAgent "$@"
 
 echo -e "\n mapa 6"
-env PYTHONHASHSEED=$t0 LONGLIFESEED=$t1 python start.py -m mapa6.bmp -c $1 $2 -s StudentAgent
+python start.py -m maps/mapa6.bmp -c -s StudentAgent "$@"
+
+echo -e "\n mapa random-eR6GOTdD4LkXkSdO3R4k.bmp"
+python start.py -m maps/random-eR6GOTdD4LkXkSdO3R4k.bmp -c -s StudentAgent "$@"
+
+echo -e "\n mapa random-i0bR6bmvLRwoyJifkxsn.bmp"
+python start.py -m maps/random-i0bR6bmvLRwoyJifkxsn.bmp -c -s StudentAgent "$@"
