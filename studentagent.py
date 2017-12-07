@@ -7,6 +7,8 @@ class StudentAgent(Agent):
         super().__init__(name, body, world)
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
         self.path = collections.deque()
+        self.waypoints = self.find_waypoints()
+        self.debug_dead_ends = {pos for pos in self.dead_ends if pos not in self.world.walls}
 
     def chooseAction(self, vision, msg):
         head = self.body[0]
@@ -29,7 +31,7 @@ class StudentAgent(Agent):
                         goal = self.path.popleft()
                         self.path.appendleft(goal)
                         self.path = self.search(head, goal, bodies)
-                    
+
                     if new_path:
                         self.path = self.shortest_path(new_path, self.path)
                 elif new_path:
@@ -39,7 +41,7 @@ class StudentAgent(Agent):
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
-                
+
                 return Stay, b""
         else:
             if self.path:
@@ -53,9 +55,9 @@ class StudentAgent(Agent):
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
-                
+
             return Stay, b""
-        
+
     # verifica se é necessário um path para chegar á posição
     def path_needed(self, start, goal, bodies):
         head = start
@@ -68,7 +70,7 @@ class StudentAgent(Agent):
                 distance = self.distance(head, goal)
             else:
                 return True
-        
+
         return False
 
     # retorna o path mais curto
@@ -102,7 +104,7 @@ class StudentAgent(Agent):
             current = openset[0]
             if current == goal and current != start:
                 return self.find_path(cameFrom, current, start)
-                
+
             openset.remove(current)
             closedset.append(current)
             validact = self.valid_actions(current, bodies).keys()
@@ -112,7 +114,7 @@ class StudentAgent(Agent):
             for pos in neighbors:
                 if pos not in openset:
                     openset.append(pos)
-                
+
                 gscore = Gdict[current] + self.distance(current,pos)
 
                 if gscore < Gdict[pos]:
@@ -161,3 +163,16 @@ class StudentAgent(Agent):
                 nextpos = empty[0]
                 neighbors = self.valid_actions(nextpos, bodies)
                 empty = [i for i in neighbors if i not in self.dead_ends]
+
+    def find_waypoints(self):
+        result = []
+        horizontalList = [Point(1,0), Point(0,1), Point(-1,0), Point(0,-1)]
+        diagonalList = [Point(1,1), Point(-1,1), Point(-1,-1), Point(1,-1)]
+        for pos in self.world.walls.keys():
+            for i in range(4):
+                p1 = self.world.translate(pos, horizontalList[i])
+                p2 = self.world.translate(pos, horizontalList[(i+1)%4])
+                pDiag =  self.world.translate(pos,diagonalList[i])
+                if pDiag not in self.dead_ends and p1 not in self.dead_ends and p2 not in self.dead_ends:
+                    result.append(pDiag)
+        return set(result)
