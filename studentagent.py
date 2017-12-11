@@ -8,7 +8,11 @@ class StudentAgent(Agent):
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
         self.path = collections.deque()
         self.waypoints = self.find_waypoints()
-        self.debug_dead_ends = {pos for pos in self.dead_ends if pos not in self.world.walls}
+        self.debug_dead_ends = [pos for pos in self.dead_ends if pos not in self.world.walls]
+        self.pointList= [] # lista de pontos que podem ser percorridos
+        for x in range(self.world.size.x):
+            for y in range(self.world.size.y):
+                self.pointList.append(Point(x,y))
 
     def chooseAction(self, vision, msg):
         head = self.body[0]
@@ -59,6 +63,7 @@ class StudentAgent(Agent):
             return Stay, b""
 
     # verifica se é necessário um path para chegar á posição
+    # depth_search
     def path_needed(self, start, goal, bodies):
         head = start
         distance = self.distance(head, goal)
@@ -72,6 +77,25 @@ class StudentAgent(Agent):
                 return True
 
         return False
+
+    # breadth_search
+    def closest_waypoint(self, point):
+        openset = set()
+        openset.add(point)
+        closedset = set()
+        while openset:
+            waypoints = [pos for pos in openset if pos in self.waypoints]
+            # apenas waypoints diretos, sem path
+            waypoints = [pos for pos in waypoints if not self.path_needed(point, pos, {})]
+            if waypoints:
+                return [waypoints[0]]
+            else:
+                closedset.update(openset)
+                for pos in openset.copy():
+                    s = self.valid_actions(pos, {})
+                    l = {pos for pos in s.keys() if pos not in closedset}
+                    openset.update(l)
+        return []
 
     # retorna o path mais curto
     def shortest_path(self, path1, path2):
