@@ -13,7 +13,8 @@ class StudentAgent(Agent):
         for x in range(self.world.size.x):
             for y in range(self.world.size.y):
                 self.pointList.append(Point(x,y))
-        self.graph = self.createGraph()
+        # self.graph = self.createGraph()
+        self.dead_locks = self.dead_locks()
         #print(self.graph.g)
 
     def chooseAction(self, vision, msg):
@@ -105,7 +106,7 @@ class StudentAgent(Agent):
 
             openset.remove(current)
             closedset.add(current)
-            neighbors = [pos for pos in self.valid_actions(current, bodies) if pos not in closedset]
+            neighbors = list(self.valid_actions(current, bodies, closedset).keys())
             neighbors.sort(key=lambda x: self.distance(x, goal))
 
             for pos in neighbors:
@@ -131,11 +132,12 @@ class StudentAgent(Agent):
         return deque
 
     # devolve um dicionário de pontos para ações
-    def valid_actions(self, head, bodies):
+    # forbiden é um set de pontos para excluir, reduz os ciclos se for uma lista grande
+    def valid_actions(self, head, bodies, forbiden=set()):
         validact = {}
         for act in ACTIONS[1:]:
             newpos = self.world.translate(head, act)
-            if newpos not in self.dead_ends and newpos not in bodies:
+            if newpos not in self.dead_ends and newpos not in bodies and newpos not in forbiden:
                 validact[newpos] = act
         return validact
 
@@ -232,6 +234,77 @@ class StudentAgent(Agent):
                     l = {pos for pos in s.keys() if pos not in closedset}
                     openset.update(l)
         return []
+
+    def dead_locks(self):
+        go = DIRECTIONS.copy()
+        result = {}
+        # [(Up, Down), (Right, Left)] 
+        tuple_go = [(go[0],go[1]), (go[2], go[3])]
+        # retira os dead_ends
+        empty_points = [pos for pos in self.pointList if pos not in self.dead_ends]
+        # por cada ponto na lista de pontos vazios nao visitados
+        for pos in empty_points:
+            # i é um tuplo no go
+            for i in range(2):
+                p = self.world.translate(pos, tuple_go[i][0])
+                poposite = self.world.translate(pos, tuple_go[i][1])
+                if p in self.dead_ends and poposite in self.dead_ends:
+                    # constroi o "path" do deadlock_path, TODO curvas não funcionam por algum motivo
+                    dlocks1 = self.dead_lock_list(pos)
+                    # reconstroi a lista na mesma referencia
+                    empty_points = [pos for pos in empty_points if pos not in dlocks1]
+                    # redundancia, dado um ponto como key num dicionario devolve um objeto dead_lock_mutex se existe, O(1)
+                    result[dlocks1[0]] = dead_lock_mutex(dlocks1)
+                    result[dlocks1[-1]] = dead_lock_mutex(dlocks1)
+
+        return result
+
+    # verifica se um determinado ponto é um entroncamento
+    def bissection(self, pos, forbiden):
+        bissections = [pos for pos in self.valid_actions(pos, {}, forbiden)]
+        # se tem 3 ações então é um entroncamento
+        if len(bissections) > 2:
+            return True
+        else:
+            return False
+
+    # dado um ponto entre duas paredes faz uma "Pesquisa Bidirecional em Profundidade"
+    def dead_lock_list(self, pos):
+        dlocks1 = [pos]
+        # pontos visitados no path
+        closedset = set()
+        closedset.add(pos)
+        # search numa direção
+        nextpos = list(self.valid_actions(pos, {}, closedset).keys())
+        # um dead_lock tem apena uma e uma só saida
+        while len(nextpos)==1:
+            dlocks1[1:] = dlocks1[:]
+            dlocks1[0] = nextpos[0]
+            closedset.add(nextpos)
+            nextpos = list(self.valid_actions(nextpos, {}, closedset).keys())
+
+        # search na direção oposta
+        nextpos = list(self.valid_actions(pos, {}, closedset).keys())
+        while len(nextpos)==1:
+            dlocks1.append(nextpos)
+            closedset.add(nextpos)
+            nextpos = list(self.valid_actions(nextpos, {}, closedset).keys())
+
+        return dlocks1
+    
+class dead_lock_mutex():
+    def __init__(self, dlocks):
+        self.borders = [dlocks[0], dlocks[-1]]
+        self.taken = False
+        self.dead_locks = dlocks
+    
+    # chamada quando o head entra num ponto fronteira do dead_lock
+    def lock(self):
+        self.taken = True
+
+    # chamada quando o head sai de um ponto fronteira do dead_lock
+    def unlock(self):
+        self.taken = False
 
 
 from collections import defaultdict
