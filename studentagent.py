@@ -8,7 +8,11 @@ class StudentAgent(Agent):
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
         self.path = collections.deque()
         self.waypoints = self.find_waypoints()
-        self.debug_dead_ends = {pos for pos in self.dead_ends if pos not in self.world.walls}
+        self.debug_dead_ends = [pos for pos in self.dead_ends if pos not in self.world.walls]
+        self.pointList= [] # lista de pontos que podem ser percorridos
+        for x in range(self.world.size.x):
+            for y in range(self.world.size.y):
+                self.pointList.append(Point(x,y))
         self.graph = self.createGraph()
         #print(self.graph.g)
 
@@ -61,6 +65,7 @@ class StudentAgent(Agent):
             return Stay, b""
 
     # verifica se é necessário um path para chegar á posição
+    # depth_search
     def path_needed(self, start, goal, bodies):
         head = start
         distance = self.distance(head, goal)
