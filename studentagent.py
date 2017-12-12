@@ -31,38 +31,31 @@ class StudentAgent(Agent):
             else:
                 new_path = self.search(head, food[0], bodies)
                 if self.path:
-                    nextpos = self.path.pop()
-                    self.path.append(nextpos)
+                    nextpos = self.path[-1]
                     if nextpos not in validact:
-                        goal = self.path.popleft()
-                        self.path.appendleft(goal)
+                        goal = self.path[0]
                         self.path = self.search(head, goal, bodies)
 
                     if new_path:
                         self.path = self.shortest_path(new_path, self.path)
                 elif new_path:
-                        self.path = new_path
-                else:
-                    return Stay, b""
+                    self.path = new_path
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
 
-                return Stay, b""
         else:
             if self.path:
-                nextpos = self.path.pop()
-                self.path.append(nextpos)
+                nextpos = self.path[-1]
                 if nextpos not in validact:
-                    goal = self.path.popleft()
-                    self.path.appendleft(goal)
+                    goal = self.path[0]
                     self.path = self.search(head, goal, bodies)
 
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
 
-            return Stay, b""
+        return Stay, b""
 
     # verifica se é necessário um path para chegar á posição
     # depth_search
@@ -100,41 +93,36 @@ class StudentAgent(Agent):
 
     # Search A_Star com dicionários
     def search(self, start, goal, bodies):
-        closedset = [] # coordenadas visitadas
+        closedset = set() # coordenadas visitadas
         openset = [start] # coordenadas por visitar
         cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
         Gdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo acumulado
-        Fdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo estimado(heuristica)
         Gdict[start] = 0
-        Fdict[start] = self.distance(start, goal)
         while openset != []:
             current = openset[0]
             if current == goal and current != start:
                 return self.find_path(cameFrom, current, start)
 
             openset.remove(current)
-            closedset.append(current)
-            validact = self.valid_actions(current, bodies).keys()
-            neighbors = [pos for pos in validact if pos not in closedset]
+            closedset.add(current)
+            neighbors = [pos for pos in self.valid_actions(current, bodies) if pos not in closedset]
             neighbors.sort(key=lambda x: self.distance(x, goal))
 
             for pos in neighbors:
-                if pos not in openset:
-                    openset.append(pos)
-
                 gscore = Gdict[current] + self.distance(current,pos)
 
                 if gscore < Gdict[pos]:
                     cameFrom[pos] = current
                     Gdict[pos] = gscore
-                    Fdict[pos] = Gdict[pos] +self.distance(current,goal)
 
-        return collections.deque()
+            openset += [pos for pos in neighbors if pos not in openset]
+
+        return []
 
     # devolve uma lifo sendo que o ultimo é na verdade a proxima posicao
     def find_path(self, cameFrom, end, start):
         current = end
-        deque = collections.deque()
+        deque = []
         deque.append(current)
         while current in cameFrom and cameFrom[current] != start:
             current = cameFrom[current]
