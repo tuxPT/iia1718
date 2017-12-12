@@ -9,6 +9,8 @@ class StudentAgent(Agent):
         self.path = collections.deque()
         self.waypoints = self.find_waypoints()
         self.debug_dead_ends = {pos for pos in self.dead_ends if pos not in self.world.walls}
+        self.graph = self.createGraph()
+        #print(self.graph.g)
 
     def chooseAction(self, vision, msg):
         head = self.body[0]
@@ -176,3 +178,124 @@ class StudentAgent(Agent):
                 if pDiag not in self.dead_ends and p1 not in self.dead_ends and p2 not in self.dead_ends:
                     result.append(pDiag)
         return set(result)
+
+    def createGraph(self):
+        g = Graph(self.world)
+        wayList = list(self.waypoints)
+        while wayList:
+            n1 = wayList.pop()
+            l = [x for x in wayList if not self.path_needed(n1,x,[])]
+            for p in l:
+                g.add(n1,p)
+        return g
+
+    def dijkstra_search(graph, start, goal):
+        frontier = PriorityQueue()
+        frontier.put(start, 0)
+        came_from = {}
+        cost_so_far = {}
+        came_from[start] = None
+        cost_so_far[start] = 0
+
+        while not frontier.empty():
+            current = frontier.get()
+            if current == goal:
+                break
+            for next in graph.neighbors(current):
+                new_cost = cost_so_far[current] + graph.cost(current, next)
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost
+                    frontier.put(next, priority)
+                    came_from[next] = current
+
+        return self.reverse(came_from,start, goal)
+
+    def reverse(self,came_from,start,goal):
+        current = goal
+        path = []
+        while current != start:
+            path.append(current)
+            current = came_from[current]
+        path.append(start)
+        path.reverse()
+        return path
+
+    # breadth_search
+    def closest_waypoint(self, point):
+        openset = set()
+        openset.add(point)
+        closedset = set()
+        while openset:
+            waypoints = [pos for pos in openset if pos in self.waypoints]
+            # apenas waypoints diretos, sem path
+            waypoints = [pos for pos in waypoints if not self.path_needed(point, pos, {})]
+            if waypoints:
+                return [waypoints[0]]
+            else:
+                closedset.update(openset)
+                for pos in openset.copy():
+                    s = self.valid_actions(pos, {})
+                    l = {pos for pos in s.keys() if pos not in closedset}
+                    openset.update(l)
+        return []
+
+
+from collections import defaultdict
+import world
+
+class Graph():
+
+    def __init__(self, world):
+        self.g = defaultdict(set)
+        self.world = world
+
+    def add(self, node1, node2):
+        if node1 == node2:
+            return
+        distance = self.world.dist(node1,node2)
+        self.g[node1].add((node2,distance))
+        self.g[node2].add((node1,distance))
+
+    def remove(self, node1, node2):
+        distance = self.world.dist(node1,node2)
+        self.g[node1].remove((node2,distance))
+        self.g[node2].remove((node1,distance))
+
+    def isConnected(self, node1, node2):
+        if node1 in self.g.keys() and [item for item in self.g[node1] if item[0] == node2]:
+            return True
+        return False
+
+    def neighbors(self,node1):
+        return [a for (a,b) in self.g[node1]]
+
+    def cost(self, node1, node2):
+        if not self.isConnected(node1,node2):
+            return None
+        return {b for a,b in self.g[node1] if a == node2}.pop()
+
+import heapq
+
+class PriorityQueue:
+    def __init__(self):
+        self.elements = []
+
+    def empty(self):
+        return len(self.elements) == 0
+
+    def put(self, item, priority):
+        heapq.heappush(self.elements, (priority, item))
+
+    def get(self):
+        return heapq.heappop(self.elements)[1]
+
+if __name__ == "__main__": # DEBUG Graph
+    w = World(Point(5,5))
+    h = Graph(w)
+    h.add(Point(2,2), Point(3,2))
+    h.add(Point(2,2), Point(4,4))
+    print(h.isConnected(Point(2,2),Point(3,2)))
+    print(h.cost(Point(2,2),Point(3,2)))
+    print(h.neighbors(Point(2,2)))
+    print(h.g)
