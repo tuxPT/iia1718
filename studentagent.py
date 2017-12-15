@@ -9,12 +9,6 @@ class StudentAgent(Agent):
         self.path = collections.deque()
         # self.waypoints = self.find_waypoints()
         self.debug_dead_ends = [pos for pos in self.dead_ends if pos not in self.world.walls]
-<<<<<<< HEAD
-        self.pointList= [] # lista de pontos que podem ser percorridos
-        for x in range(self.world.size.x):
-            for y in range(self.world.size.y):
-                self.pointList.append(Point(x,y))
-=======
         self.areas = []
         self.areas = [set() for pos in range((int(self.world.size.x/20) + 1) * (int(self.world.size.y/20)+1))]
         self.pointList = [Point(x,y) for y in range(self.world.size.y) for x in range(self.world.size.x)]     
@@ -24,7 +18,6 @@ class StudentAgent(Agent):
         self.way_dead = set()
 
         # self.graph = self.createGraph()
->>>>>>> otimizações e dead_locks
         self.dead_locks = self.dead_locks()
         #print(self.dead_locks)
 
