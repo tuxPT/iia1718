@@ -11,7 +11,7 @@ class StudentAgent(Agent):
         self.debug_dead_ends = [pos for pos in self.dead_ends if pos not in self.world.walls]
         self.areas = []
         self.areas = [set() for pos in range((int(self.world.size.x/20) + 1) * (int(self.world.size.y/20)+1))]
-        self.pointList = [Point(x,y) for y in range(self.world.size.y) for x in range(self.world.size.x)]     
+        self.pointList = [Point(x,y) for y in range(self.world.size.y) for x in range(self.world.size.x)]
 
         [self.areas[int(y/20) + int(x/20)].add(Point(x,y)) for y in range(self.world.size.y) for x in range(self.world.size.x)]
 
@@ -20,9 +20,22 @@ class StudentAgent(Agent):
         # self.graph = self.createGraph()
         self.dead_locks = self.dead_locks()
         #print(self.dead_locks)
+        self.lastMsgSent = None
+        self.inDeadLock = False
+        self.msgToSend = b""
+        self.otherAgentDead = False
 
 
     def chooseAction(self, vision, msg):
+        if msg and not self.otherAgentDead: #Treat messages
+            if msg == self.msgToSend:
+                self.otherAgentDead = True
+            else:
+                dl,value = pickle.loads(msg)
+                for border in self.dead_locks[dl].borders:
+                    self.dead_locks[border].taken = value
+
+        self.msgToSend = b""
         head = self.body[0]
         bodies = vision.bodies
         validact = self.valid_actions(head, bodies)
@@ -32,7 +45,7 @@ class StudentAgent(Agent):
             direct_food = [pos for pos in food if not self.path_needed(head, pos, bodies)]
             if direct_food:
                 nextpos = [pos for pos in validact if self.distance(pos, direct_food[0]) < self.distance(head, direct_food[0])]
-                return validact[nextpos[0]], b""
+                return self.dead_lock_checker(nextpos[0],validact), self.msgToSend
 
             else:
                 new_path = self.search(head, food[0], bodies)
@@ -48,8 +61,8 @@ class StudentAgent(Agent):
                     self.path = new_path
                 if self.path:
                     nextpos = self.path.pop()
-                    return validact[nextpos], b""
-                
+                    return self.dead_lock_checker(nextpos,validact), self.msgToSend
+
         else:
             if self.path:
                 nextpos = self.path[-1]
@@ -59,9 +72,9 @@ class StudentAgent(Agent):
 
                 if self.path:
                     nextpos = self.path.pop()
-                    return validact[nextpos], b""
-        
-        return Stay, b""
+                    return self.dead_lock_checker(nextpos,validact), self.msgToSend
+
+        return Stay, self.msgToSend
         '''
         num_areas = [i for i in range(len(self.areas))]
         area_goal = random.choice(num_areas)
@@ -71,6 +84,30 @@ class StudentAgent(Agent):
             nextpos = self.path.pop()
             return validact[nextpos], b""
         '''
+
+    def dead_lock_checker(self, nextPos, validact):
+        if self.otherAgentDead:
+            return validact[nextPos]
+        dl = [x for x in self.dead_locks.keys() if x == nextPos]
+        if dl: #nextPos is a deadlock
+            if self.dead_locks[nextPos].taken:
+                if (self.inDeadLock):
+                    for border in self.dead_locks[nextPos].borders:
+                        self.dead_locks[border].unlock()
+                    self.msgToSend = pickle.dumps((nextPos, False))
+                    self.inDeadLock = False
+                    return validact[nextPos]
+                else:
+                    return Stay
+            else:
+                self.msgToSend = pickle.dumps((nextPos,True)) #Encode message
+                #print(str(self.name) + ": MSG SEND: Message: " + str(self.msgToSend))
+                self.inDeadLock = True
+                for border in self.dead_locks[nextPos].borders:
+                    self.dead_locks[border].lock()
+                return validact[nextPos]
+        else: #nextPos not a deadlock
+            return validact[nextPos]
 
     # verifica se é necessário um path para chegar á posição
     # depth_search
@@ -234,9 +271,10 @@ class StudentAgent(Agent):
                         # reconstroi a lista na mesma referencia
                         empty_points2.update(dlocks1)
                         # redundancia, dado um ponto como key num dicionario devolve um objeto dead_lock_mutex se existe, O(1)
-                        result[dlocks1[0]] = dead_lock_mutex(dlocks1)
-                        result[dlocks1[-1]] = dead_lock_mutex(dlocks1)
-                        break
+                        if dlocks1[0] != dlocks1[-1]:
+                            result[dlocks1[0]] = dead_lock_mutex(dlocks1)
+                            result[dlocks1[-1]] = dead_lock_mutex(dlocks1)
+                            break
 
         return result
 
@@ -253,7 +291,7 @@ class StudentAgent(Agent):
             dlocks1[0:0] = [nextpos[0]]
             closedset.add(nextpos[0])
             nextpos = list(self.valid_actions(nextpos[0], {}, forbiden=closedset).keys())
-        
+
         # search na direção oposta
         nextpos = list(self.valid_actions(pos, {}, forbiden=closedset).keys())
         while len(nextpos)==1:
