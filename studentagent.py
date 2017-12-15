@@ -7,12 +7,24 @@ class StudentAgent(Agent):
         super().__init__(name, body, world)
         self.fill_dead_ends() # busca os dead_ends e armazena-os num set juntamente com os pontos do self.world.walls
         self.path = collections.deque()
-        self.waypoints = self.find_waypoints()
+        # self.waypoints = self.find_waypoints()
         self.debug_dead_ends = [pos for pos in self.dead_ends if pos not in self.world.walls]
+<<<<<<< HEAD
         self.pointList= [] # lista de pontos que podem ser percorridos
         for x in range(self.world.size.x):
             for y in range(self.world.size.y):
                 self.pointList.append(Point(x,y))
+=======
+        self.areas = []
+        self.areas = [set() for pos in range((int(self.world.size.x/20) + 1) * (int(self.world.size.y/20)+1))]
+        self.pointList = [Point(x,y) for y in range(self.world.size.y) for x in range(self.world.size.x)]     
+
+        [self.areas[int(y/20) + int(x/20)].add(Point(x,y)) for y in range(self.world.size.y) for x in range(self.world.size.x)]
+
+        self.way_dead = set()
+
+        # self.graph = self.createGraph()
+>>>>>>> otimizações e dead_locks
         self.dead_locks = self.dead_locks()
         #print(self.dead_locks)
 
@@ -44,7 +56,7 @@ class StudentAgent(Agent):
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
-
+                
         else:
             if self.path:
                 nextpos = self.path[-1]
@@ -55,8 +67,17 @@ class StudentAgent(Agent):
                 if self.path:
                     nextpos = self.path.pop()
                     return validact[nextpos], b""
-
+        
         return Stay, b""
+        '''
+        num_areas = [i for i in range(len(self.areas))]
+        area_goal = random.choice(num_areas)
+        goal = self.world.generatePos(forbiden=self.dead_ends, preferred=self.areas[area_goal])
+        self.path = self.search(head, goal, bodies)
+        if self.path:
+            nextpos = self.path.pop()
+            return validact[nextpos], b""
+        '''
 
     # verifica se é necessário um path para chegar á posição
     # depth_search
@@ -76,11 +97,7 @@ class StudentAgent(Agent):
 
     # retorna o path mais curto
     def shortest_path(self, path1, path2):
-        if len(path1) < len(path2):
-            return path1
-        else:
-            return path2
-
+        return path1 if len(path1) < len(path2) else path2
 
     # menor distância entre dois pontos num plano toroidal
     def distance(self, head, pos):
@@ -123,9 +140,8 @@ class StudentAgent(Agent):
     # devolve uma lifo sendo que o ultimo é na verdade a proxima posicao
     def find_path(self, cameFrom, end, start):
         current = end
-        deque = []
-        deque.append(current)
-        while current in cameFrom and cameFrom[current] != start:
+        deque = [current]
+        while cameFrom[current] != start:
             current = cameFrom[current]
             deque.append(current)
 
@@ -210,136 +226,54 @@ class StudentAgent(Agent):
         tuple_go = [(go[0],go[1]), (go[2], go[3])]
         # retira os dead_ends
         empty_points = [pos for pos in self.pointList if pos not in self.dead_ends]
+        empty_points2 = set()
         # por cada ponto na lista de pontos vazios nao visitados
         for pos in empty_points:
-            # i é um tuplo no go
-            for i in range(2):
-                p = self.world.translate(pos, tuple_go[i][0])
-                poposite = self.world.translate(pos, tuple_go[i][1])
-                if p in self.dead_ends and poposite in self.dead_ends: #Check if deadlock
-                    if i == 0:
-                        deadLockHorizontal = True
-                    else:
-                        deadLockHorizontal = False
-                    initialStateHorizontal = True if deadLockHorizontal else False
-                    start = pos
-                    end = pos
-                    #Search one side
-                    goingDirection = Left if deadLockHorizontal else Up
-                    start = self.findEndDeadLock(pos, goingDirection, deadLockHorizontal, empty_points)
-                    #Search the other
-                    goingDirection = Right if deadLockHorizontal else Up
-                    end = self.findEndDeadLock(pos,goingDirection, deadLockHorizontal, empty_points)
-                    dlocks1 = [start,end]
-                    # redundancia, dado um ponto como key num dicionario devolve um objeto dead_lock_mutex se existe, O(1)
-                    result[dlocks1[0]] = dead_lock_mutex(dlocks1)
-                    result[dlocks1[-1]] = dead_lock_mutex(dlocks1)
+            if pos not in empty_points2:
+                # i é um tuplo no go
+                for i in range(2):
+                    p = self.world.translate(pos, tuple_go[i][0])
+                    poposite = self.world.translate(pos, tuple_go[i][1])
+                    if p in self.dead_ends and poposite in self.dead_ends:
+                        # constroi o "path" do deadlock_path, TODO curvas não funcionam por algum motivo
+                        self.way_dead.add(pos)
+                        dlocks1 = self.dead_lock_list(pos)
+                        # reconstroi a lista na mesma referencia
+                        empty_points2.update(dlocks1)
+                        # redundancia, dado um ponto como key num dicionario devolve um objeto dead_lock_mutex se existe, O(1)
+                        result[dlocks1[0]] = dead_lock_mutex(dlocks1)
+                        result[dlocks1[-1]] = dead_lock_mutex(dlocks1)
+                        break
 
         return result
-
-    def findEndDeadLock(self, pos, goingDirection, dlHorizontal,empty_points):
-        wallsHorizontal = [Up,Down]
-        wallsVertical = [Right,Left]
-        curveHorizontalLeft = [[Left,Down],[Left,Up]]
-        curveHorizontalRight = [[Right,Down],[Right,Up]]
-        curveVerticalUp = [[Up,Right],[Up,Left]]
-        curveVerticalDown = [[Right,Down],[Right,Up]]
-        end = pos
-        current = pos
-        while True:
-            current = self.world.translate(current, goingDirection)
-            try:
-                empty_points.remove(current)
-            except:
-                pass
-            #Check if continues as deadlock
-            if dlHorizontal:
-                if self.world.translate(current,wallsHorizontal[0]) in self.dead_ends and self.world.translate(current,wallsHorizontal[1]) in self.dead_ends:
-                    end = current
-                    continue
-            else:
-                if self.world.translate(current,wallsVertical[0]) in self.dead_ends and self.world.translate(current,wallsVertical[1]) in self.dead_ends:
-                    end = current
-                    continue
-            #Check if curve
-            if dlHorizontal:
-                if goingDirection == Left: #Curves for going left on Horizontal DeadLock
-                    if self.world.translate(current,curveHorizontalLeft[0][0]) in self.dead_ends and self.world.translate(current,curveHorizontalLeft[0][1]) in self.dead_ends:
-                        dlHorizontal = False
-                        goingDirection= Up
-                        continue
-                    if self.world.translate(current,curveHorizontalLeft[1][0]) in self.dead_ends and self.world.translate(current,curveHorizontalLeft[1][1]) in self.dead_ends:
-                        dlHorizontal = False
-                        goingDirection= Down
-                        continue
-                else: #Curves for going Right on Horizontal DeadLock
-                    if self.world.translate(current,curveHorizontalRight[0][0]) in self.dead_ends and self.world.translate(current,curveHorizontalRight[0][1]) in self.dead_ends:
-                        dlHorizontal = False
-                        goingDirection= Up
-                        continue
-                    if self.world.translate(current,curveHorizontalRight[1][0]) in self.dead_ends and self.world.translate(current,curveHorizontalRight[1][1]) in self.dead_ends:
-                        dlHorizontal = False
-                        goingDirection= Down
-                        continue
-            else:
-                if goingDirection == Up: #Curves for going Up on Vertical DeadLock
-                    if self.world.translate(current,curveVerticalUp[0][0]) in self.dead_ends and self.world.translate(current,curveVerticalUp[0][1]) in self.dead_ends:
-                        dlHorizontal = True
-                        goingDirection= Left
-                        continue
-                    if self.world.translate(current,curveVerticalUp[1][0]) in self.dead_ends and self.world.translate(current,curveVerticalUp[1][1]) in self.dead_ends:
-                        dlHorizontal = True
-                        goingDirection= Right
-                        continue
-                else:#Curves for going Down on Vertical DeadLock
-                    if self.world.translate(current,curveHorizontalRight[0][0]) in self.dead_ends and self.world.translate(current,curveHorizontalRight[0][1]) in self.dead_ends:
-                        dlHorizontal = True
-                        goingDirection= Left
-                        continue
-                    if self.world.translate(current,curveHorizontalRight[1][0]) in self.dead_ends and self.world.translate(current,curveHorizontalRight[1][1]) in self.dead_ends:
-                        dlHorizontal = True
-                        goingDirection= Right
-                        continue
-            #Break in case conditions aren't met
-            break
-        return end
-
-    # verifica se um determinado ponto é um entroncamento
-    def bissection(self, pos, forbiden):
-        bissections = [pos for pos in self.valid_actions(pos, {}, forbiden)]
-        # se tem 3 ações então é um entroncamento
-        if len(bissections) > 2:
-            return True
-        else:
-            return False
 
     # dado um ponto entre duas paredes faz uma "Pesquisa Bidirecional em Profundidade"
     def dead_lock_list(self, pos):
         dlocks1 = [pos]
         # pontos visitados no path
-        closedset = set()
-        closedset.add(pos)
+        closedset = {pos}
         # search numa direção
-        nextpos = list(self.valid_actions(pos, {}, closedset).keys())
+        nextpos = list(self.valid_actions(pos, {}, forbiden=closedset).keys())
+        nextpos = [nextpos[0]]
         # um dead_lock tem apena uma e uma só saida
         while len(nextpos)==1:
-            dlocks1[1:] = dlocks1[:]
-            dlocks1[0] = nextpos[0]
-            closedset.add(nextpos)
-            nextpos = list(self.valid_actions(nextpos, {}, closedset).keys())
-
+            dlocks1[0:0] = [nextpos[0]]
+            closedset.add(nextpos[0])
+            nextpos = list(self.valid_actions(nextpos[0], {}, forbiden=closedset).keys())
+        
         # search na direção oposta
-        nextpos = list(self.valid_actions(pos, {}, closedset).keys())
+        nextpos = list(self.valid_actions(pos, {}, forbiden=closedset).keys())
         while len(nextpos)==1:
-            dlocks1.append(nextpos)
-            closedset.add(nextpos)
-            nextpos = list(self.valid_actions(nextpos, {}, closedset).keys())
+            dlocks1.append(nextpos[0])
+            closedset.add(nextpos[0])
+            nextpos = list(self.valid_actions(nextpos[0], {}, forbiden=closedset).keys())
 
+        dlocks1 = dlocks1[1:-1]
         return dlocks1
 
 class dead_lock_mutex():
     def __init__(self, dlocks):
-        self.borders = [dlocks[0], dlocks[-1]]
+        self.borders = {dlocks[0], dlocks[-1]}
         self.taken = False
         self.dead_locks = dlocks
 
