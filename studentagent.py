@@ -1,5 +1,5 @@
 from agent import *
-import random,math,sys,collections,pickle,heapq
+import random,math,sys,collections,pickle,time, heapq
 
 class StudentAgent(Agent):
 
@@ -27,6 +27,7 @@ class StudentAgent(Agent):
 
 
     def chooseAction(self, vision, msg):
+        # print(str(self.name) + " msg: " + str(msg))
         if msg and not self.otherAgentDead: #Treat messages
             if msg == self.msgToSend:
                 self.otherAgentDead = True
@@ -40,6 +41,12 @@ class StudentAgent(Agent):
         bodies = vision.bodies
         validact = self.valid_actions(head, bodies)
         food = list(vision.food.keys())
+        if not (self.nutrients['S'] < 1000 and self.nutrients['M'] < 1000):
+            if self.nutrients['M'] < 1000:
+                food = [pos for (pos, food) in vision.food.items() if food == 'M'] 
+            elif self.nutrients['S'] < 1000:
+                food = [pos for (pos, food) in vision.food.items() if food == 'S'] 
+
         food.sort(key=lambda x: self.distance(x, head))
         if food:
             direct_food = [pos for pos in food if not self.path_needed(head, pos, bodies)]
@@ -74,16 +81,23 @@ class StudentAgent(Agent):
                     nextpos = self.path.pop()
                     return self.dead_lock_checker(nextpos,validact), self.msgToSend
 
-        return Stay, self.msgToSend
-        '''
+        # return Stay, self.msgToSend
+        
         num_areas = [i for i in range(len(self.areas))]
         area_goal = random.choice(num_areas)
         goal = self.world.generatePos(forbiden=self.dead_ends, preferred=self.areas[area_goal])
+            
         self.path = self.search(head, goal, bodies)
         if self.path:
             nextpos = self.path.pop()
-            return validact[nextpos], b""
-        '''
+            return self.dead_lock_checker(nextpos, validact), self.msgToSend
+
+        l = list(validact.keys())
+        if l:
+            pos = random.choice(l)
+            return self.dead_lock_checker(pos, validact), self.msgToSend
+        
+        return Stay, self.msgToSend
 
     def dead_lock_checker(self, nextPos, validact):
         if self.otherAgentDead:
@@ -146,7 +160,9 @@ class StudentAgent(Agent):
         cameFrom = {} # dicionario/mapa, dada uma posicao retorna a posicao anterior
         Gdict = collections.defaultdict(lambda: math.inf) # dicionario/mapa, dada uma posicao retorna o custo acumulado
         Gdict[start] = 0
-        while openset != []:
+        t0 = time.process_time()
+        t1 = time.process_time()
+        while t1 - t0 < 3 and openset != []:
             current = openset[0]
             if current == goal and current != start:
                 return self.find_path(cameFrom, current, start)
@@ -164,7 +180,7 @@ class StudentAgent(Agent):
                     Gdict[pos] = gscore
 
             openset += [pos for pos in neighbors if pos not in openset]
-
+            t1 = time.process_time()
         return []
 
     # devolve uma lifo sendo que o ultimo é na verdade a proxima posicao
@@ -285,6 +301,9 @@ class StudentAgent(Agent):
         closedset = {pos}
         # search numa direção
         nextpos = list(self.valid_actions(pos, {}, forbiden=closedset).keys())
+        if not nextpos:
+            return [pos]
+
         nextpos = [nextpos[0]]
         # um dead_lock tem apena uma e uma só saida
         while len(nextpos)==1:
@@ -299,7 +318,7 @@ class StudentAgent(Agent):
             closedset.add(nextpos[0])
             nextpos = list(self.valid_actions(nextpos[0], {}, forbiden=closedset).keys())
 
-        dlocks1 = dlocks1[1:-1]
+        dlocks1 = dlocks1[1:-1] 
         return dlocks1
 
 class dead_lock_mutex():
